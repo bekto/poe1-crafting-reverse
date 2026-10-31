@@ -56,9 +56,15 @@ The planner currently covers:
 
 ### Assumptions to verify
 
-- A rare roll gets 4, 5 or 6 mods with chances 8/12, 3/12 and 1/12. Jewels get 3 or 4.
-- An alteration gives 2 mods half the time.
+These aren't in the game data. Each one is a named constant in `public/js/engine/craft.js`.
+
+- `RARE_COUNTS`: a rare roll (Chaos, Alchemy, essence, fossil) gets 4, 5 or 6 mods with chances 8/12, 3/12 and 1/12. These are community-measured values that crafting simulators such as Craft of Exile also use; GGG hasn't published them.
+- `JEWEL_COUNTS`: jewels get 3 or 4 mods, with chances 8/12 and 4/12 (an estimate).
+- `MAGIC_TWO_MOD_CHANCE`: an Alteration or Transmutation gives 2 mods half the time (an estimate).
 - Fossil weights multiply: a 1000 entry means ×10, and a 0 entry blocks the mod.
+- Each new mod is picked with chance proportional to its spawn weight, among the mods that are still allowed (no mod from a group already on the item, and a free prefix or suffix slot).
+
+`test/reference.mjs` checks that the simulator gives the exact answers that follow from these assumptions on a small made-up pool (Chaos, Alteration, Alteration + Augmentation, essence). It checks the maths, not the assumptions themselves.
 
 ### Not covered yet
 
@@ -69,6 +75,8 @@ Harvest, Eldritch currency, metacrafting, multimod, veiled mods, Awakener's and 
 ```bash
 node test/run.mjs                 # parser on the sample items
 node test/plan.mjs ring 0,3,5     # planner for chosen mods of a sample
+node test/unit.mjs                # unit tests
+node test/reference.mjs           # simulator against odds worked out by hand
 NODE_PATH=$(npm root -g) node test/browser.cjs boots   # full UI run (needs Playwright and a server on :8765)
 ```
 
