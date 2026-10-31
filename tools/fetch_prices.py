@@ -18,6 +18,7 @@ from pathlib import Path
 
 # poe.ninja's PoE 1 economy API (checked 2026-10-31 from a GitHub runner; the old /api/data/*overview routes are gone)
 NINJA = "https://poe.ninja/poe1/api"
+USER_AGENT = "reverse-crafter-prices/1.0 (static PoE crafting planner; hourly GitHub Action; contact via the repository's issues)"
 INDEX_PATH = "data/index-state"
 OVERVIEW_PATH = "economy/exchange/current/overview"
 # exchange overview types with items the planner prices
