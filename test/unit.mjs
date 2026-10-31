@@ -269,6 +269,22 @@ Place into an allocated Jewel Socket on the Passive Skill Tree. Right click to r
   ok(ident.mods.every((m) => m.mod.d === "m"), "jewel mods come from the misc domain");
 });
 
+test("every sample item parses and identifies all of its mods", async () => {
+  const { ITEMS, LABELS } = await import("../public/js/samples.js");
+  ok(Object.keys(ITEMS).length >= 13);
+  for (const [k, text] of Object.entries(ITEMS)) {
+    const { item, ident } = parse(text);
+    deq(item.errors, [], k);
+    deq(ident.unknown, [], k);
+    ok(ident.mods.length > 0, k);
+    ok(LABELS[k], `${k} has a menu label`);
+  }
+  ok(parse(ITEMS.hunterboots).item.influences.includes("hunter"));
+  ok(parse(ITEMS.fractured).ident.mods.some((m) => m.fractured));
+  ok(parse(ITEMS.plate).ident.mods.some((m) => m.mod.st.length === 2), "plate has a hybrid mod");
+  eq(parse(ITEMS.jewel).item.base.cls, "Jewel");
+});
+
 // ------------------------------------------------------------------ pools, tiers
 const ring = db.basesByName.get("Two-Stone Ring")[0];
 const plate = db.basesByName.get("Astral Plate")[0];

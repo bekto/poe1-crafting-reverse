@@ -1,7 +1,7 @@
 import { indexData } from "./engine/data.js";
 import { parseItemText, identifyMods } from "./engine/parse.js";
 import { tierTables } from "./engine/pool.js";
-import { ITEMS } from "./samples.js";
+import { ITEMS, LABELS } from "./samples.js";
 
 const DATA_URL = new URL("../data/poe1.json", import.meta.url).href;
 const $ = (id) => document.getElementById(id);
@@ -192,6 +192,7 @@ function renderPlan(plan, ilvl) {
   }
 }
 
+for (const key of Object.keys(ITEMS)) $("sampleSel").add(new Option(LABELS[key] || key, key));
 $("readBtn").addEventListener("click", readItem);
 $("planBtn").addEventListener("click", findPlans);
 $("sampleSel").addEventListener("change", (e) => {
