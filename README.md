@@ -145,7 +145,8 @@ python3 tools/fetch_prices.py /tmp/p.json --fixtures test/fixtures    # offline,
 node test/run.mjs                 # parser on the sample items
 node test/plan.mjs ring 0,3,5     # planner for chosen mods of a sample
 node test/unit.mjs                # unit tests
-node test/reference.mjs           # simulator against odds worked out by hand
+node test/reference.mjs           # simulator and exact engine against hand-worked odds and brute force
+node test/perf.mjs                # every sample planned with all mods wanted, within the time budget
 NODE_PATH=$(npm root -g) node test/browser.cjs boots   # full UI run (needs Playwright and a server on :8765)
 NODE_PATH=$(npm root -g) node test/browser.cjs builder # the manual item builder
 NODE_PATH=$(npm root -g) node test/browser.cjs '#b=Metadata/Items/Rings/Ring12&i=85&w=IncreasedLife5'   # a share link
