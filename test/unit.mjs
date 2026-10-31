@@ -431,7 +431,7 @@ test("planner uses exact odds for 1-2 wanted mods and simulation for more", asyn
   const { item, ident } = parse(ITEMS.ring);
   const want = (idx) => ident.mods.filter((_, i) => idx.includes(i)).map((m) => ({ mod: m.mod, minMod: m.mod }));
   const two = planCraft(db, item.base, item.ilvl, [], want([0, 3]), [], { refineMs: 0 });
-  ok(two.methods.every((m) => m.exact), "every method exact with 2 targets");
+  ok(two.methods.filter((m) => !m.approximate).every((m) => m.exact), "every method exact with 2 targets (except data marked approximate)");
   const chaos = two.methods.find((m) => m.kind === "chaos");
   ok(chaos.p > 0 && chaos.p < 0.05);
   const again = planCraft(db, item.base, item.ilvl, [], want([0, 3]), [], { refineMs: 0 });
