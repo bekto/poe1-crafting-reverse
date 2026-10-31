@@ -31,7 +31,7 @@ h1, h2, h3 { font-family: Georgia, "Times New Roman", serif; font-weight: normal
 .brand p { margin: .2rem 0 0; color: var(--muted); }
 .meta { color: var(--muted); font-size: .85rem; }
 main { max-width: 980px; margin: 0 auto; padding: 1.5rem clamp(1rem, 4vw, 2rem) 3rem; display: grid; gap: 1.2rem; }
-.panel { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 1.2rem 1.4rem; }
+.panel { min-width: 0; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 1.2rem 1.4rem; }
 .panel h2 { margin: 0 0 .6rem; font-size: 1.3rem; display: flex; align-items: center; gap: .6rem; }
 .num { display: inline-grid; place-items: center; width: 1.7rem; height: 1.7rem; border-radius: 50%; border: 1px solid var(--gold); color: var(--gold); font-size: .95rem; font-family: system-ui, sans-serif; }
 .hint { color: var(--muted); margin: .2rem 0 .8rem; font-size: .93rem; }
@@ -51,6 +51,8 @@ button.primary { background: var(--gold); color: #1a1408; border-color: var(--go
 button.primary:hover { background: var(--gold-2); }
 button:disabled { opacity: .5; cursor: default; }
 input[type=number] { width: 5.5rem; }
+select, input, textarea { max-width: 100%; }
+#sampleSel { min-width: 0; flex: 1 1 12rem; }
 .ilvl { color: var(--muted); display: flex; gap: .5rem; align-items: center; }
 .msg { margin-top: .9rem; padding: .7rem .9rem; border-radius: 8px; background: #2a1d1a; color: var(--bad); border: 1px solid #4a2c26; }
 .msg.warn { background: #2a2418; color: var(--warn); border-color: #4a3d22; }
@@ -66,7 +68,7 @@ input[type=number] { width: 5.5rem; }
   display: grid; grid-template-columns: auto auto 1fr auto; gap: .7rem; align-items: center;
   background: var(--panel-2); border: 1px solid var(--line); border-radius: 8px; padding: .55rem .75rem;
 }
-.mod.off { opacity: .45; }
+.mod.off { opacity: .6; }
 .mod input[type=checkbox] { width: 1.1rem; height: 1.1rem; accent-color: var(--gold); }
 .side { font-size: .72rem; font-weight: 700; letter-spacing: .06em; padding: .1rem .45rem; border-radius: 4px; border: 1px solid; }
 .side.p { color: var(--prefix); border-color: #3c4f66; }
@@ -96,7 +98,7 @@ input[type=number] { width: 5.5rem; }
 .method .odds b { font-size: 1.15rem; color: var(--gold-2); font-weight: 600; }
 .method .odds small { display: block; color: var(--muted); font-size: .78rem; }
 .method.best { border-color: var(--gold); }
-.method.best .mname::before { content: "Best chance  "; color: var(--gold); font-size: .75rem; letter-spacing: .05em; text-transform: uppercase; }
+.method.best .mname::before { content: attr(data-best) "  "; color: var(--gold); font-size: .75rem; letter-spacing: .05em; text-transform: uppercase; }
 .method.unlikely .odds b { color: var(--bad); }
 .steps { margin: 0; padding: .2rem 1.2rem 1rem 2.6rem; border-top: 1px solid var(--line); }
 .steps li { margin: .7rem 0; }

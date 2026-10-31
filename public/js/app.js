@@ -368,7 +368,7 @@ function drawMethods() {
       lock: m.eldritch ? "Two stages · Eldritch Chaos rerolls one side" : m.harvestKeep ? "Two stages · Harvest rerolls one side" : "Metacraft · two stages, each stage-2 try needs a new lock craft",
     }[m.kind] + (m.multimod ? " · multimod" : "") + (m.approximate ? (m.kind === "recomb" ? " · approximate" : " · Harvest data is hand-written") : "");
     d.innerHTML = `
-      <summary><span class="mname">${esc(m.name)}<span class="kind">${kind}${m.corrupt ? " · corrupted essence" : ""}</span></span><span class="odds">${odds}${costText(m)}</span></summary>
+      <summary><span class="mname" data-best="${rankBy === "cost" && prices ? "Cheapest" : "Best chance"}">${esc(m.name)}<span class="kind">${kind}${m.corrupt ? " · corrupted essence" : ""}</span></span><span class="odds">${odds}${costText(m)}</span></summary>
       <ol class="steps">${m.steps.map((s) => `<li><b>${esc(s.title)}</b><span>${esc(s.detail)}</span></li>`).join("")}</ol>`;
     box.appendChild(d);
   });

@@ -41,7 +41,8 @@ Work top to bottom. Each item is done when its acceptance check passes, the test
   - Notes: collapsible builder under the paste box (datalist search for bases and mod families, influences, fractured flag, slot/group checks); engine helpers `baseChoices`/`modFamilies` in pool.js; `browser.cjs builder` drives it end to end and now fails on any error.
 - [x] **Shareable links.** Encode the base, item level and targets in `location.hash` (a plain `#` name format that the host allows; see the README).
   - Notes: `engine/share.js` (`#b=..&i=..&f=..&w=id~minId,..&x=..`, no escaping; every RePoE id is safe), written after planning, opened on load/hashchange (runs the plan), "Copy link" button; format documented in the README; unit + browser tests.
-- [ ] **Mobile layout pass and accessibility check** (keyboard navigation, labels, contrast).
+- [x] **Mobile layout pass and accessibility check** (keyboard navigation, labels, contrast).
+  - Notes: `test/a11y.cjs` checks a 375 px phone at every step (no sideways scroll), accessible names, WCAG AA contrast and a keyboard-only run. Fixed: the input panel was 476 px wide (grid min-width), the paste box had no name, and the "best" label now says "Cheapest" when ranking by cost.
 - [ ] **Performance.** Keep plans under 5 seconds on a mid-range laptop. Consider a Rust/WebAssembly engine only if needed.
 
 ## Phase 4: release

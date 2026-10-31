@@ -133,6 +133,9 @@ node test/plan.mjs ring 0,3,5     # planner for chosen mods of a sample
 node test/unit.mjs                # unit tests
 node test/reference.mjs           # simulator against odds worked out by hand
 NODE_PATH=$(npm root -g) node test/browser.cjs boots   # full UI run (needs Playwright and a server on :8765)
+NODE_PATH=$(npm root -g) node test/browser.cjs builder # the manual item builder
+NODE_PATH=$(npm root -g) node test/browser.cjs '#b=Metadata/Items/Rings/Ring12&i=85&w=IncreasedLife5'   # a share link
+NODE_PATH=$(npm root -g) node test/a11y.cjs            # phone layout, control names, contrast, keyboard-only use
 ```
 
 Fan-made tool. Not affiliated with or endorsed by Grinding Gear Games.
