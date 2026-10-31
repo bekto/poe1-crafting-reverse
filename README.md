@@ -18,9 +18,20 @@ The page has to be served over HTTP, because browsers block module scripts and `
 
 Open "No item text? Build the item by hand" under the paste box. Pick a base type, item level and influences, then add mods from a searchable list (best tier first; you can relax tiers in step 2) and mark any fractured ones. "Use this item" continues as if you had pasted it.
 
+## Shareable links
+
+After "Find crafting plans", the address bar holds the base, item level, influences and wanted mods, and "Copy link to this plan" copies it. Opening the link fills in the item and runs the plan. The format is a plain `#` fragment with no escaping, which every static host (including GitHub Pages) serves as is:
+
+```
+#b=<base id>&i=<item level>&f=<influence>,<influence>&w=<mod id>[~<lowest acceptable tier id>],...&x=<fractured mod id>,...
+#b=Metadata/Items/Rings/Ring12&i=85&w=IncreasedLife5~IncreasedLife3,ColdResist7
+```
+
+Ids are RePoE ids (letters, digits, `_` and `/`). A link made with older game data shows an error if an id no longer exists.
+
 ## Update the game data after a new league or patch
 
-The app reads one data file, `public/data/poe1.json`. You build it from the community RePoE export:
+The app reads `public/data/poe1.json`, built from the community RePoE export, plus the hand-written files in `public/data/manual/`. Rebuild `poe1.json` like this:
 
 ```bash
 git clone --depth 1 https://github.com/repoe-fork/repoe-fork.github.io repoe
@@ -41,36 +52,18 @@ public/
   data/manual/         hand-written mechanics RePoE doesn't export (Harvest, eldritch, recombinator, league), with sources
   js/engine/data.js         loads the data (poe1.json + data/manual/*.json), compiles mod text into regexes
   js/engine/parse.js        parses Ctrl+C / Ctrl+Alt+C item text: mods, tiers, summed lines, eldritch implicits
-  js/engine/pool.js         mod pools, spawn weights, tiers, bench options, the bench-slot rule
+  js/engine/pool.js         mod pools, spawn weights, tiers, bench options, the bench-slot rule, builder lists
   js/engine/assumptions.js  every mechanic the game data doesn't give (see "Assumptions" below)
   js/engine/exact.js        exact odds: reroll integral, alteration-route DP, unveil choices
   js/engine/sim.js          Monte Carlo core (used for 3+ wanted mods)
   js/engine/stage1.js       alteration stage 1 in closed form, plus a sampler of good magic items
   js/engine/annul.js        the annul-on-miss variant of the alteration route (simulated)
   js/engine/craft.js        the planner: builds every method and ranks them
+  js/engine/cost.js         expected currency use and price of each method
   js/engine/steps.js        turns a method into step-by-step text
   js/engine/run.js          shared entry point (worker and main-thread fallback)
-tools/build_data.py repoe/data public/data/poe1.json "$(cat repoe/version.txt)"
-```
-
-You don't need to change any code for a new league, unless GGG adds a new crafting system.
-
-## Project layout
-
-```
-public/
-  index.html, css/style.css
-  js/app.js            UI
-  js/worker.js         runs the simulations in a background thread
-  js/samples.js        example items
-  data/poe1.json       game data built from RePoE
-  data/manual/         hand-written mechanics RePoE doesn't export (Harvest, eldritch, recombinator, league), with sources
-  js/engine/data.js    loads the data, compiles mod text into regexes
-  js/engine/parse.js   parses Ctrl+C / Ctrl+Alt+C item text and identifies each mod and tier
-  js/engine/pool.js    mod pools, spawn weights, tiers, bench options
-  js/engine/craft.js   Monte Carlo simulator and planner
-  js/engine/run.js     shared entry point (worker and main-thread fallback)
 tools/build_data.py    turns the RePoE export into public/data/poe1.json
+tools/fetch_prices.py  poe.ninja prices into public/data/prices.json (run by the hourly GitHub Action)
 test/                  Node and Playwright checks
 ```
 

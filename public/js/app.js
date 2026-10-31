@@ -2,6 +2,7 @@ import { loadDb } from "./engine/data.js";
 import { parseItemText, identifyMods } from "./engine/parse.js";
 import { tierTables, modFamilies, baseChoices } from "./engine/pool.js";
 import { ITEMS, LABELS } from "./samples.js";
+import { encodeShare, decodeShare } from "./engine/share.js";
 
 const DATA_DIR = new URL("../data/", import.meta.url).href;
 const $ = (id) => document.getElementById(id);
@@ -26,7 +27,9 @@ async function init() {
       : `League mechanic (${lg.league} ${lg.mechanic}): not modelled yet; its crafting rules haven't been checked.`;
     $("readBtn").disabled = false;
     setupBuilder();
-    loadPrices();
+    await loadPrices();
+    openShared();
+    window.addEventListener("hashchange", openShared);
   } catch (e) {
     $("meta").textContent = "Couldn't load game data.";
     showMsg("parseMsg", "Couldn't load the game data file. Reload the page to try again.");
@@ -76,6 +79,34 @@ function readItem() {
   });
   current = { item, rows, unknown: ident.unknown };
   renderItem();
+}
+
+// ---------------------------------------------------------------- shareable links
+function openShared() {
+  const r = decodeShare(db, location.hash);
+  if (!r) return;
+  if (r.error) { showMsg("parseMsg", esc(r.error), "warn"); return; }
+  const { baseId, ilvl, influences, wanted, fixedIds } = r.state;
+  const base = db.bases.find((b) => b.id === baseId);
+  const { tierOf, families } = tierTables(db, base, influences);
+  const row = (mod, extra) => {
+    const info = tierOf.get(mod.id);
+    const m = { mod, lines: [mod.x.replace(/\n/g, " / ")], side: mod.g, crafted: mod.d === "c", fractured: false, tier: info?.tier ?? null, tierCount: info?.of ?? null, essenceOnly: !!mod.e, unveiled: mod.d === "u", ...extra.m };
+    return { m, want: !m.fractured, minModId: extra.minModId || mod.id, family: info ? families.get(info.family) : null };
+  };
+  const rows = [
+    ...wanted.map((w) => row(db.modById.get(w.modId), { minModId: w.minModId, m: {} })),
+    ...fixedIds.map((id) => row(db.modById.get(id), { m: { fractured: true } })),
+  ];
+  const item = { base, ilvl, influences, rarity: "rare", name: "Shared item", flags: new Set(), eldritch: null, advanced: false, built: true };
+  current = { item, rows, unknown: [] };
+  showMsg("parseMsg", "");
+  renderItem();
+  findPlans();
+}
+
+function shareState(req) {
+  return { baseId: req.baseId, ilvl: req.ilvl, influences: req.influences, wanted: req.wanted.map((w) => ({ modId: w.modId, minModId: w.minModId })), fixedIds: req.fixedIds };
 }
 
 // ---------------------------------------------------------------- manual item builder
@@ -221,6 +252,7 @@ async function findPlans() {
   if (!wanted.length) { showMsg("unknownMsg", "Tick at least one mod you want.", "warn"); return; }
   const ilvl = Math.max(1, Math.min(100, parseInt($("ilvlInput").value, 10) || item.ilvl));
   const req = { baseId: item.base.id, ilvl, influences: item.influences, wanted, fixedIds, trials: 20000, prices, eldritch: item.eldritch ? { dominant: item.eldritch.dominant } : null };
+  try { history.replaceState(null, "", encodeShare(shareState(req))); } catch { /* an id that can't go in a link */ }
   $("resultPanel").hidden = false;
   $("progress").hidden = false;
   $("methods").innerHTML = "";
@@ -347,6 +379,10 @@ function drawMethods() {
 
 for (const key of Object.keys(ITEMS)) $("sampleSel").add(new Option(LABELS[key] || key, key));
 $("readBtn").addEventListener("click", readItem);
+$("shareBtn").addEventListener("click", async () => {
+  try { await navigator.clipboard.writeText(location.href); $("shareMsg").textContent = "Link copied."; }
+  catch { $("shareMsg").textContent = "Copy the address bar to share this plan."; }
+});
 for (const r of document.querySelectorAll('input[name="rank"]')) {
   r.checked = r.value === rankBy;
   r.addEventListener("change", () => { rankBy = r.value; localStorage.setItem("rankBy", rankBy); drawMethods(); });

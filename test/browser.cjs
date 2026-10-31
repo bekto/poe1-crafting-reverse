@@ -13,8 +13,19 @@ const { chromium } = require('playwright');
     const body = require('fs').readFileSync(process.env.PRICES, 'utf8');
     await p.route('**/data/prices.json', (r) => r.fulfill({ status: 200, contentType: 'application/json', body }));
   }
-  await p.goto('http://127.0.0.1:8765/');
+  const share = (process.argv[2] || '').startsWith('#') ? process.argv[2] : null; // open a share link
+  await p.goto('http://127.0.0.1:8765/' + (share || ''));
   await p.waitForFunction(() => !document.getElementById('readBtn').disabled, null, { timeout: 30000 });
+  if (share) {
+    await p.waitForSelector('.method', { timeout: 120000 });
+    console.log('shared item:', await p.$eval('#itemHead', (e) => e.innerText.replace(/\n/g, ' | ')));
+    console.log('hash after planning:', await p.evaluate(() => location.hash));
+    console.log('first plan:', await p.$eval('.method summary', (e) => e.innerText.split('\n')[0]));
+    console.log('errors', errs);
+    if (errs.length) process.exitCode = 1;
+    await b.close();
+    return;
+  }
   if (process.argv[2] === 'builder') {
     // build an item by hand: a Two-Stone Ring with life and cold resistance
     await p.click('#builder summary');

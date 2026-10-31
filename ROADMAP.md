@@ -39,7 +39,8 @@ Work top to bottom. Each item is done when its acceptance check passes, the test
   - Notes: `tools/fetch_prices.py` + `.github/workflows/prices.yml` (hourly, descriptive UA), tested on saved responses in `test/fixtures/`; `engine/cost.js` gives each method's expected currency use; the UI shows chaos/divine and a rank toggle. poe.ninja isn't reachable from this environment, so no live prices.json is committed (the Action creates it).
 - [x] **Manual item builder.** Pick a base, an item level and mods from searchable lists, for when you have no item text.
   - Notes: collapsible builder under the paste box (datalist search for bases and mod families, influences, fractured flag, slot/group checks); engine helpers `baseChoices`/`modFamilies` in pool.js; `browser.cjs builder` drives it end to end and now fails on any error.
-- [ ] **Shareable links.** Encode the base, item level and targets in `location.hash` (a plain `#` name format that the host allows; see the README).
+- [x] **Shareable links.** Encode the base, item level and targets in `location.hash` (a plain `#` name format that the host allows; see the README).
+  - Notes: `engine/share.js` (`#b=..&i=..&f=..&w=id~minId,..&x=..`, no escaping; every RePoE id is safe), written after planning, opened on load/hashchange (runs the plan), "Copy link" button; format documented in the README; unit + browser tests.
 - [ ] **Mobile layout pass and accessibility check** (keyboard navigation, labels, contrast).
 - [ ] **Performance.** Keep plans under 5 seconds on a mid-range laptop. Consider a Rust/WebAssembly engine only if needed.
 

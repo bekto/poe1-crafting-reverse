@@ -713,6 +713,21 @@ test("builder lists: unique base labels, mod families best tier first, influence
   ok(plain.findIndex((f) => f.side === "s") > plain.findLastIndex((f) => f.side === "p"), "prefixes then suffixes");
 });
 
+// ------------------------------------------------------------------ share links
+test("share links: plain hash round-trip and clear errors", async () => {
+  const { encodeShare, decodeShare } = await import("../public/js/engine/share.js");
+  const state = { baseId: "Metadata/Items/Rings/Ring12", ilvl: 85, influences: ["shaper"], wanted: [{ modId: "IncreasedLife5", minModId: "IncreasedLife3" }, { modId: "ColdResist7", minModId: "ColdResist7" }], fixedIds: ["Strength1"] };
+  const h = encodeShare(state);
+  ok(/^#[A-Za-z0-9_/.,~=&-]+$/.test(h), "only plain characters: " + h);
+  deq(decodeShare(db, h).state, state);
+  ok(!db.mods.some((m) => !/^[A-Za-z0-9_/.-]+$/.test(m.id)) && !db.bases.some((b) => !/^[A-Za-z0-9_/.-]+$/.test(b.id)), "every id can go in a link");
+  eq(decodeShare(db, ""), null);
+  eq(decodeShare(db, "#something-else"), null, "other hashes are ignored");
+  ok(/Unknown base/.test(decodeShare(db, "#b=Nope&w=IncreasedLife5").error));
+  ok(/Unknown mod/.test(decodeShare(db, "#b=Metadata/Items/Rings/Ring12&w=NoSuchMod").error));
+  eq(decodeShare(db, "#b=Metadata/Items/Rings/Ring12&i=999&w=IncreasedLife5").state.ilvl, 100, "item level clamped");
+});
+
 // ------------------------------------------------------------------ prices
 test("prices: fetch script on saved poe.ninja responses, and cost per method", async () => {
   const { execFileSync } = await import("node:child_process");
