@@ -76,6 +76,7 @@ input[type=number] { width: 5.5rem; }
 .badge { font-size: .72rem; padding: .05rem .4rem; border-radius: 4px; margin-left: .4rem; vertical-align: 1px; }
 .badge.crafted { color: var(--crafted); border: 1px solid #2f4d48; }
 .badge.fractured { color: var(--warn); border: 1px solid #4a3d22; }
+.badge.summed { color: var(--muted, #9aa); border: 1px dashed #556; cursor: help; }
 .mod select { max-width: 19rem; font-size: .85rem; padding: .35rem .5rem; }
 .mod .fixed { color: var(--muted); font-size: .85rem; }
 

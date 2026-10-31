@@ -13,6 +13,7 @@ export const LABELS = {
   hunterboots: "Influenced boots (Hunter)",
   fractured: "Fractured helmet",
   synthamulet: "Synthesised amulet",
+  summedplate: "Body armour, Ctrl+C with a summed life line",
 };
 
 export const ITEMS = {
@@ -283,4 +284,21 @@ Item Level: 84
 +31% to Global Critical Strike Multiplier
 --------
 Synthesised Item`,
+summedplate: `Item Class: Body Armours
+Rarity: Rare
+Golem Shell
+Astral Plate
+--------
+Armour: 1650
+--------
+Item Level: 86
+--------
++10% to all Elemental Resistances (implicit)
+--------
++120 to Armour
++215 to maximum Life
+85% increased Armour
++44% to Fire Resistance
++47% to Cold Resistance
++33% to Chaos Resistance`,
 };

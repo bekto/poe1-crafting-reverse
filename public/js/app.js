@@ -88,7 +88,7 @@ function renderItem() {
       <input type="checkbox" data-i="${i}" ${r.want ? "checked" : ""} ${m.fractured ? "disabled" : ""} aria-label="Want this mod">
       <span class="side ${m.side}">${m.side === "p" ? "PREFIX" : "SUFFIX"}</span>
       <span class="text">${esc(m.lines.join(" / "))}
-        ${m.crafted ? `<span class="badge crafted">crafted</span>` : ""}${m.fractured ? `<span class="badge fractured">fractured</span>` : ""}
+        ${m.crafted ? `<span class="badge crafted">crafted</span>` : ""}${m.fractured ? `<span class="badge fractured">fractured</span>` : ""}${m.summed ? `<span class="badge summed" title="Ctrl+C adds up lines with the same stat. This line was split between two mods; Ctrl+Alt+C shows each one.">summed line</span>` : ""}
         <small>${esc(m.mod.n || "")}${tier ? " · " + tier : ""}</small></span>
       ${control}`;
     list.appendChild(el);

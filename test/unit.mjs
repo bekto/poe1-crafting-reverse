@@ -285,6 +285,58 @@ test("every sample item parses and identifies all of its mods", async () => {
   eq(parse(ITEMS.jewel).item.base.cls, "Jewel");
 });
 
+// ------------------------------------------------------------------ summed Ctrl+C lines
+const PLATE_SUMMED = `Item Class: Body Armours
+Rarity: Rare
+Golem Shell
+Astral Plate
+--------
+Item Level: 86
+--------
++10% to all Elemental Resistances (implicit)
+--------
++120 to Armour
++215 to maximum Life
+85% increased Armour
++44% to Fire Resistance
++47% to Cold Resistance`;
+
+test("summed line: hybrid armour + life plus a pure life mod is split into both", () => {
+  const { ident, ids } = parse(PLATE_SUMMED);
+  deq(ident.unknown, []);
+  ok(ids.includes("LocalBaseArmourAndLife4"), "hybrid found: " + ids);
+  ok(ids.includes("IncreasedLife12"), "pure life found (215 - 34..38 = 177..181)");
+  eq(ident.mods.filter((m) => m.side === "p").length, 3);
+  const summed = ident.mods.filter((m) => m.summed).map((m) => m.mod.id).sort();
+  deq(summed, ["IncreasedLife12", "LocalBaseArmourAndLife4"]);
+  ok(ident.searchSteps < 20000, `search stays small (${ident.searchSteps} steps)`);
+});
+
+test("summed line: a value that one mod explains is not split", () => {
+  const { ids, ident } = parse(PLATE_SUMMED.replace("+215 to maximum Life", "+180 to maximum Life"));
+  ok(ids.includes("IncreasedLife12"));
+  ok(!ids.includes("LocalBaseArmourAndLife4"));
+  ok(!ident.mods.some((m) => m.summed));
+});
+
+test("summed line: weapon hybrid physical + accuracy with pure physical", () => {
+  const { ids, ident } = parse(`Item Class: Thrusting One Hand Swords
+Rarity: Rare
+Viper Needle
+Jewelled Foil
+--------
+Item Level: 84
+--------
++25% to Global Critical Strike Multiplier (implicit)
+--------
+230% increased Physical Damage
++160 to Accuracy Rating
+26% increased Attack Speed`);
+  deq(ident.unknown, []);
+  ok(ids.includes("LocalIncreasedPhysicalDamagePercentAndAccuracyRating7"), ids.join());
+  ok(ids.includes("LocalIncreasedPhysicalDamagePercent7"), ids.join());
+});
+
 // ------------------------------------------------------------------ pools, tiers
 const ring = db.basesByName.get("Two-Stone Ring")[0];
 const plate = db.basesByName.get("Astral Plate")[0];

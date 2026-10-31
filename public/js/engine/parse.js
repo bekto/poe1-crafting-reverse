@@ -173,7 +173,12 @@ export function identifyMods(db, item) {
   // --- plain (Ctrl+C) lines: search for the best assignment of lines to mods
   if (plainLines.length) {
     const sol = assignLines(plainLines, pool, benchMods);
-    for (const a of sol.assigned) result.mods.push(describe(a.mod, a.lines.map((i) => plainLines[i].text), plainLines[a.lines[0]]));
+    result.searchSteps = sol.steps;
+    for (const a of sol.assigned) {
+      const d = describe(a.mod, a.lines.map((i) => plainLines[i].text), plainLines[a.lines[0]]);
+      if (a.summed) d.summed = true; // shares a summed Ctrl+C line with another mod
+      result.mods.push(d);
+    }
     for (const i of sol.unassigned) result.unknown.push(plainLines[i].text);
   }
   // prefixes first, then suffixes
@@ -200,73 +205,158 @@ function scoreMultiLine(mod, lines) {
   return score;
 }
 
+// Score weights for assignLines. A line explained by two mods is only chosen when one mod can't explain it.
+const SCORE_LINE_IN_RANGE = 10;
+const SCORE_UNASSIGNED = -100;
+const SCORE_SHARED_LINE = -8;
+const SCORE_MOD = 1; // a small bonus per mod: prefer two simple mods over one hybrid when both fit
+const SCORE_MOD_IN_RANGE = 5;
+const SCORE_MOD_OUT_OF_RANGE = -20;
+const MAX_LINE_CONTRIBUTORS = 2;
+
+/**
+ * Finds the best assignment of Ctrl+C lines to mods. In Ctrl+C text the game sums identical stat lines,
+ * so "+(34-38) to maximum Life" from a hybrid and "+(175-189) to maximum Life" from a pure life mod show as
+ * one line; a line may therefore be explained by up to two mods whose ranges add up to its value.
+ */
 function assignLines(lines, pool, benchMods) {
-  // candidate options per line
-  const options = lines.map(() => []);
+  const values = lines.map(() => null);
+  const optsByLine = lines.map(() => []);
   const consider = (mod, crafted) => {
-    // every template line must match some item line with the same crafted flag
+    // every template line must match some item line (same text, any value) with the same crafted flag
     const perTpl = mod.tpl.map((tl) => {
       const hits = [];
       lines.forEach((l, i) => {
         if (!!l.crafted !== crafted) return;
         const r = matchLine(tl, l.text);
-        if (r) hits.push({ i, inRange: r.inRange });
+        if (r) { hits.push(i); values[i] = r.values; }
       });
       return hits;
     });
     if (perTpl.some((h) => h.length === 0)) return;
-    // enumerate distinct line combos (small)
-    const combos = [];
-    const rec = (k, acc, inR) => {
-      if (k === perTpl.length) { combos.push({ lines: [...acc], inRange: inR }); return; }
-      for (const h of perTpl[k]) if (!acc.includes(h.i)) { acc.push(h.i); rec(k + 1, acc, inR + (h.inRange ? 1 : 0)); acc.pop(); }
+    const rec = (k, acc) => {
+      if (k === perTpl.length) {
+        const opt = { mod, lines: [...acc] };
+        // a single mod that explains all its lines on its own is tried first
+        opt.alone = opt.lines.every((li, t) => rangeOk(values[li], [mod.tpl[t].ranges]));
+        for (const li of opt.lines) optsByLine[li].push(opt);
+        return;
+      }
+      for (const i of perTpl[k]) if (!acc.includes(i)) { acc.push(i); rec(k + 1, acc); acc.pop(); }
     };
-    rec(0, [], 0);
-    for (const c of combos) {
-      const opt = { mod, lines: c.lines, inRange: c.inRange };
-      options[Math.min(...c.lines)].push(opt);
-    }
+    rec(0, []);
   };
   for (const m of pool) consider(m, false);
   for (const m of benchMods) consider(m, true);
+  for (const opts of optsByLine) opts.sort((a, b) => b.alone - a.alone || a.lines.length - b.lines.length);
+  // a line can only be a summed line if no single mod explains it
+  const needy = optsByLine.map((opts) => !opts.some((o) => o.alone));
 
-  let best = { score: -Infinity, assigned: [], unassigned: lines.map((_, i) => i) };
-  const covered = new Array(lines.length).fill(false);
+  const contrib = lines.map(() => []); // per line: template ranges of the mods explaining it
+  const accepted = new Array(lines.length).fill(false);
+  const stateOf = (i) => (contrib[i].length ? lineState(values[i], contrib[i]) : "empty");
   const groups = new Set();
   const counts = { p: 0, s: 0 };
   const chosen = [];
+  let best = { score: -Infinity, assigned: [], unassigned: lines.map((_, i) => i) };
   let steps = 0;
-  const rec = (i, score) => {
-    if (++steps > 200000) return;
-    while (i < lines.length && covered[i]) i++;
-    if (i >= lines.length) {
-      const unassigned = lines.map((_, k) => k).filter((k) => !chosen.some((c) => c.lines.includes(k)));
-      const s = score - unassigned.length * 100;
-      if (s > best.score) best = { score: s, assigned: [...chosen], unassigned };
-      return;
+
+  const evaluate = () => {
+    let score = 0;
+    const ok = lines.map((_, i) => stateOf(i) === "ok");
+    lines.forEach((_, i) => {
+      if (!contrib[i].length) score += SCORE_UNASSIGNED;
+      else {
+        if (ok[i]) score += SCORE_LINE_IN_RANGE;
+        if (contrib[i].length > 1) score += SCORE_SHARED_LINE;
+      }
+    });
+    for (const o of chosen) score += SCORE_MOD + (o.lines.every((k) => ok[k]) ? SCORE_MOD_IN_RANGE : SCORE_MOD_OUT_OF_RANGE);
+    if (score > best.score) {
+      best = {
+        score,
+        assigned: chosen.map((o) => ({ mod: o.mod, lines: o.lines, summed: o.lines.some((k) => contrib[k].length > 1) })),
+        unassigned: lines.map((_, k) => k).filter((k) => !contrib[k].length),
+      };
     }
-    const opts = options[i]
-      .filter((o) => o.lines.every((k) => !covered[k]))
-      .sort((a, b) => b.inRange / b.lines.length - a.inRange / a.lines.length);
-    for (const o of opts) {
-      if (o.mod.gr.some((g) => groups.has(g))) continue;
-      if (counts[o.mod.g] >= 3) continue;
-      o.lines.forEach((k) => (covered[k] = true));
-      o.mod.gr.forEach((g) => groups.add(g));
-      counts[o.mod.g]++;
-      chosen.push(o);
-      // in-range lines are worth a lot, each extra mod costs a little (prefer simple mods over hybrids when equal)
-      rec(i + 1, score + o.inRange * 10 + (o.inRange === o.lines.length ? 5 : -20) + 1);
-      chosen.pop();
-      counts[o.mod.g]--;
-      o.mod.gr.forEach((g) => groups.delete(g));
-      o.lines.forEach((k) => (covered[k] = false));
-    }
-    // allow leaving this line unidentified
-    covered[i] = true;
-    rec(i + 1, score);
-    covered[i] = false;
   };
-  rec(0, 0);
+  const legal = (o) =>
+    !o.mod.gr.some((g) => groups.has(g)) && counts[o.mod.g] < 3 && !chosen.includes(o) &&
+    !o.lines.some((k) => contrib[k].length >= MAX_LINE_CONTRIBUTORS);
+  const place = (o) => {
+    o.lines.forEach((k, t) => contrib[k].push(o.mod.tpl[t].ranges));
+    o.mod.gr.forEach((g) => groups.add(g));
+    counts[o.mod.g]++;
+    chosen.push(o);
+  };
+  const unplace = (o) => {
+    chosen.pop();
+    counts[o.mod.g]--;
+    o.mod.gr.forEach((g) => groups.delete(g));
+    o.lines.forEach((k) => contrib[k].pop());
+  };
+  const rec = () => {
+    if (++steps > 200000) return;
+    let i = 0;
+    while (i < lines.length && (accepted[i] || ["ok", "bad"].includes(stateOf(i)))) i++;
+    if (i >= lines.length) { evaluate(); return; }
+    // only try mods that leave every line in range or fixable by one more mod; if none does
+    // (an old item with legacy ranges), fall back to every mod that matches the text
+    let tried = 0;
+    for (const strict of [true, false]) {
+      if (!strict && (tried || contrib[i].length)) break;
+      for (const o of optsByLine[i]) {
+        if (!legal(o)) continue;
+        place(o);
+        if (!strict || o.lines.every((k) => { const st = stateOf(k); return st === "ok" || (st === "more" && needy[k]); })) { tried++; rec(); }
+        unplace(o);
+      }
+    }
+    // or leave this line as it is (unidentified, or out of range)
+    accepted[i] = true;
+    rec();
+    accepted[i] = false;
+  };
+  rec();
+  best.steps = steps;
   return best;
+}
+
+/**
+ * "ok" when every number of the line is within the summed ranges of the mods explaining it, "more" when
+ * one more mod of the same stat could make it fit (the value is past the far end), otherwise "bad".
+ */
+function lineState(vals, rangeLists) {
+  if (!vals) return "bad";
+  let state = "ok";
+  for (let n = 0; n < vals.length; n++) {
+    let lo = 0, hi = 0;
+    for (const ranges of rangeLists) {
+      const r = ranges[n];
+      if (!r) return "bad";
+      lo += Math.min(r[0], r[1]);
+      hi += Math.max(r[0], r[1]);
+    }
+    const v = vals[n];
+    if (v >= lo - 1e-9 && v <= hi + 1e-9) continue;
+    const grows = hi > 0 ? v > hi : v < lo; // adding a mod pushes the sum further from zero
+    if (!grows || rangeLists.length >= MAX_LINE_CONTRIBUTORS) return "bad";
+    state = "more";
+  }
+  return state;
+}
+
+/** Is every number of a line within the summed ranges of the templates that explain it? */
+function rangeOk(vals, rangeLists) {
+  if (!vals) return false;
+  return vals.every((v, n) => {
+    let lo = 0, hi = 0;
+    for (const ranges of rangeLists) {
+      const r = ranges[n];
+      if (!r) return false;
+      lo += Math.min(r[0], r[1]);
+      hi += Math.max(r[0], r[1]);
+    }
+    return v >= lo - 1e-9 && v <= hi + 1e-9;
+  });
 }
