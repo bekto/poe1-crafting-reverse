@@ -44,7 +44,10 @@ test/                  Node and Playwright checks
 
 ## How the odds are calculated
 
-For each method, the engine simulates the craft thousands of times. It uses the game's spawn weights, mod groups (an item can't have two mods from the same group), affix limits and item level. It then spends extra simulation time on the most promising methods. When an estimate rests on fewer than 30 successful simulations, the UI marks it as a "rough estimate".
+The engine uses the game's spawn weights, mod groups (an item can't have two mods from the same group), affix limits and item level.
+
+- **Exact odds** (marked "exact") for crafts with one or two wanted mods (`public/js/engine/exact.js`). Rolling mods one by one, with chance proportional to weight, works the same as giving each mod group a random "clock" and taking groups in the order their clocks ring. In that picture prefixes and suffixes are independent, so the chance comes from a one-dimensional integral that the engine computes numerically to about 1 part in a million. Bench crafts, essences, fossil-forced mods and fractured mods are included. The alteration route is worked out by going through every possible item, with interchangeable mods grouped together.
+- **Simulation** for three or more wanted mods, or for pools the exact method doesn't handle (for example a jewel mod group that can be a prefix or a suffix). The engine simulates the craft thousands of times and then spends extra time on the most promising methods. When an estimate rests on fewer than 30 successful simulations, the UI marks it as a "rough estimate".
 
 The planner currently covers:
 

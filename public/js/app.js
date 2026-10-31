@@ -179,7 +179,9 @@ function renderPlan(plan, ilvl) {
     const odds = m.kind === "altregal" && m.p > 0
       ? `<b>~${oneIn(m.p)} alterations</b><small>${pct(m.p1)} per alteration to start · ${pct(m.p2)} that regal + exalts finish it</small>`
       : m.p > 0
-      ? `<b>1 in ${oneIn(m.p)}</b><small>${pct(m.p)} per try${m.n90 ? ` · ${m.n90.toLocaleString()} tries for 90%` : ""}${m.hits < 30 ? " · rough estimate" : ""}</small>`
+      ? `<b>1 in ${oneIn(m.p)}</b><small>${pct(m.p)} per try${m.n90 ? ` · ${m.n90.toLocaleString()} tries for 90%` : ""}${m.exact ? " · exact" : m.hits < 30 ? " · rough estimate" : ""}</small>`
+      : m.exact
+      ? `<b>Impossible</b><small>this method can't make the item</small>`
       : `<b>&lt; 1 in ${oneIn(m.upperBound)}</b><small>no hits in ${m.trials.toLocaleString()} simulated tries</small>`;
     const kind = { chaos: "Chaos spam", essence: "Essence", fossil: "Fossils", altregal: "Alteration route · cheap currency, many tries" }[m.kind];
     d.innerHTML = `

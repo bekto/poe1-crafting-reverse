@@ -1,11 +1,7 @@
 // Monte Carlo crafting simulator and reverse-crafting planner for PoE 1.
 import { basePool, itemTags, spawnWeight, maxAffixes, satisfies, makeTarget, benchOptionsFor } from "./pool.js";
-
-// Number of explicit mods a fresh rare roll gets (chaos / alchemy / essence / fossil).
-// Community-measured values (also used by Craft of Exile): 4 mods 8/12, 5 mods 3/12, 6 mods 1/12.
-const RARE_COUNTS = [[4, 8 / 12], [5, 3 / 12], [6, 1 / 12]];
-const JEWEL_COUNTS = [[3, 8 / 12], [4, 4 / 12]]; // approximate
-const MAGIC_TWO_MOD_CHANCE = 0.5; // approximate share of alterations that roll 2 mods
+import { MAGIC_TWO_MOD_CHANCE, rareModCounts } from "./assumptions.js";
+import { exactReroll, exactAltRegal } from "./exact.js";
 
 function mulberry32(seed) {
   return function () {
@@ -156,7 +152,7 @@ function simulateReroll(ctx, P, forced, trials, seed) {
   const rng = mulberry32(seed);
   const st = new State(ctx.groupIndex.size + 8);
   st.bind(P);
-  const counts = ctx.base.cls === "Jewel" ? JEWEL_COUNTS : RARE_COUNTS;
+  const counts = rareModCounts(ctx.base);
   const max = maxAffixes(ctx.base);
   const forcedInfo = [...ctx.fixedEntries.map((e) => e.mod), ...forced].map((m) => fixedInfo(ctx, m));
   let hits = 0;
@@ -186,12 +182,29 @@ function stats(hits, trials) {
   };
 }
 
+/** Odds of a known probability, in the same shape as stats(). */
+function exactStats(p) {
+  return {
+    p, exact: true, hits: null, trials: null, upperBound: null,
+    expected: p > 0 ? 1 / p : null,
+    n90: p > 0 ? (p >= 1 ? 1 : Math.ceil(Math.log(0.1) / Math.log(1 - p))) : null,
+  };
+}
+
+/** Exact odds for small cases, otherwise a Monte Carlo estimate that the planner can refine. */
+function rerollOdds(ctx, entries, forced, P, trials, seed) {
+  if (!ctx.noExact) {
+    const ex = exactReroll(ctx, entries, [...ctx.fixedEntries.map((e) => e.mod), ...forced]);
+    if (ex) return exactStats(ex.p);
+  }
+  const run = (n, sd) => simulateReroll(ctx, P, forced, n, sd);
+  return { rerun: run, ...stats(run(trials, seed), trials) };
+}
+
 // ---------------------------------------------------------------- methods
 function chaosMethod(ctx, trials) {
   const P = compileFor(ctx, ctx.pool);
-  const run = (n, sd) => simulateReroll(ctx, P, [], n, sd);
-  const hits = run(trials, 1);
-  return { kind: "chaos", name: "Chaos Orb spam", currency: [["Chaos Orb", 1]], rerun: run, ...stats(hits, trials) };
+  return { kind: "chaos", name: "Chaos Orb spam", currency: [["Chaos Orb", 1]], ...rerollOdds(ctx, ctx.pool, [], P, trials, 1) };
 }
 
 function essenceMethods(ctx, trials) {
@@ -214,11 +227,9 @@ function essenceMethods(ctx, trials) {
   const P = compileFor(ctx, ctx.pool);
   let seed = 100;
   for (const { e, mod } of families.values()) {
-    const run = (n, sd) => simulateReroll(ctx, P, [mod], n, sd);
-    const hits = run(trials, seed++);
     out.push({
-      kind: "essence", name: e.name, currency: [[e.name, 1]], essenceMod: mod, rerun: run,
-      corrupt: e.corrupt, ...stats(hits, trials),
+      kind: "essence", name: e.name, currency: [[e.name, 1]], essenceMod: mod,
+      corrupt: e.corrupt, ...rerollOdds(ctx, ctx.pool, [mod], P, trials, seed++),
     });
   }
   return out;
@@ -292,15 +303,12 @@ function fossilMethods(ctx, trials) {
   return ranked.slice(0, 5).map(({ c }) => {
     const { entries, forced } = fossilPool(ctx, c);
     const P = compileFor(ctx, entries);
-    const run = (n, sd) => simulateReroll(ctx, P, forced, n, sd);
-    const hits = run(trials, seed++);
     return {
       kind: "fossil",
       name: c.map((f) => f.name).join(" + "),
       fossils: c,
       currency: [...c.map((f) => [f.name, 1]), [resonatorName(c.length), 1]],
-      rerun: run,
-      ...stats(hits, trials),
+      ...rerollOdds(ctx, entries, forced, P, trials, seed++),
     };
   });
 }
@@ -325,6 +333,8 @@ function altRegalMethod(ctx, trials) {
   const rareMax = maxAffixes(ctx.base);
   const forced = ctx.fixedEntries.map((e) => fixedInfo(ctx, e.mod));
   if (forced.length) return null; // fractured bases: rerolling to magic keeps the fractured mod, skip for now
+  const ex = ctx.noExact ? null : exactAltRegal(ctx, s1);
+  if (ex) return altRegalResult(s1, ex.p1, ex.p2, ex.augPerAlt, ex.avgExalts, true);
 
   let augs = 0;
   const altRoll = () => {
@@ -372,20 +382,22 @@ function altRegalMethod(ctx, trials) {
     exalts += used;
     if (success(P, st, benchHit)) h2++; else if (used === 0) regalFail++;
   }
-  const p2 = h2 / n2;
+  return altRegalResult(s1, p1, h2 / n2, augPerAlt, exalts / n2, false);
+}
+
+function altRegalResult(s1, p1, p2, augPerAlt, avgExalts, exact) {
   const total = p1 * p2;
-  const s1Names = s1.map((x) => x.t);
   return {
     kind: "altregal",
     name: "Alteration → Regal → Exalted Orb",
-    stage1Targets: s1Names,
-    p1, p2, augPerAlt, avgExalts: exalts / n2,
+    stage1Targets: s1.map((x) => x.t),
+    p1, p2, augPerAlt, avgExalts,
     currency: [["Orb of Alteration", 1]],
-    ...stats(Math.round(total * 1e6), 1e6),
+    ...(exact ? exactStats(total) : stats(Math.round(total * 1e6), 1e6)),
     p: total,
     expectedAlts: total > 0 ? 1 / total : null,
     expectedRegals: p2 > 0 ? 1 / p2 : null,
-    expectedExalts: p2 > 0 ? exalts / n2 / p2 : null,
+    expectedExalts: p2 > 0 ? avgExalts / p2 : null,
   };
 }
 
@@ -393,6 +405,7 @@ function altRegalMethod(ctx, trials) {
 export function planCraft(db, base, ilvl, influences, wanted, fixed = [], opts = {}) {
   const trials = opts.trials || 20000;
   const ctx = buildContext(db, base, ilvl, influences, wanted, fixed);
+  ctx.noExact = opts.exact === false; // force Monte Carlo (used by the tests)
   const methods = [];
   methods.push(chaosMethod(ctx, trials));
   methods.push(...essenceMethods(ctx, trials));
@@ -473,7 +486,9 @@ function buildSteps(ctx, m) {
     title: `Get a ${ctx.base.name}${infl}`,
     detail: `Item level ${ctx.ilvl} (the plan was simulated at this level; at least ${minIlvl} is needed for the tiers you asked for)${fixedTxt}.`,
   });
-  const odds = m.p > 0 ? `${pct(m.p)} per try — about ${fmtN(m.expected)} tries on average, ${fmtN(m.n90)} for a 90% chance.` : `Less than ${pct(m.upperBound)} per try in ${m.trials.toLocaleString()} simulated tries — not a realistic method for this item.`;
+  const odds = m.p > 0 ? `${pct(m.p)} per try — about ${fmtN(m.expected)} tries on average, ${fmtN(m.n90)} for a 90% chance.`
+    : m.exact ? "This method can't make this item."
+    : `Less than ${pct(m.upperBound)} per try in ${m.trials.toLocaleString()} simulated tries — not a realistic method for this item.`;
   if (m.kind === "chaos") {
     steps.push({ title: "Make it rare (Orb of Alchemy), then spam Chaos Orbs", detail: `Stop when the item has ${targetList(ctx)}. ${odds}` });
   } else if (m.kind === "essence") {

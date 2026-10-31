@@ -1,0 +1,13 @@
+// Crafting mechanics that aren't in the game data. Each one is listed under "Assumptions" in the README.
+
+// Number of explicit mods a fresh rare roll gets (chaos / alchemy / essence / fossil).
+// Community-measured values (also used by Craft of Exile): 4 mods 8/12, 5 mods 3/12, 6 mods 1/12.
+export const RARE_COUNTS = [[4, 8 / 12], [5, 3 / 12], [6, 1 / 12]];
+// Jewels: 3 or 4 mods (an estimate).
+export const JEWEL_COUNTS = [[3, 8 / 12], [4, 4 / 12]];
+// Share of alterations (and transmutations) that roll 2 mods instead of 1 (an estimate).
+export const MAGIC_TWO_MOD_CHANCE = 0.5;
+
+export function rareModCounts(base) {
+  return base.cls === "Jewel" ? JEWEL_COUNTS : RARE_COUNTS;
+}

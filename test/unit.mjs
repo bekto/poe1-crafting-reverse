@@ -406,6 +406,53 @@ test("bench options are per item class", () => {
   ok(!ringOpts.some((o) => ms.test(o.mod.x)), "rings can't");
 });
 
+// ------------------------------------------------------------------ exact odds
+test("exact engine matches brute force on an uneven pool (reroll and alteration route)", async () => {
+  const R = await import("./reference.mjs");
+  const { exactReroll, exactAltRegal } = await import("../public/js/engine/exact.js");
+  const { RARE_COUNTS } = await import("../public/js/engine/assumptions.js");
+  const rich = R.richDb();
+  for (const [ids, forced] of R.RICH_CASES.slice(0, 6)) {
+    const ctx = R.richContext(rich, ids);
+    const f = forced.map((id) => rich.modById.get(id));
+    near(exactReroll(ctx, ctx.pool, f).p, R.bruteReroll(ctx, ctx.pool, f, RARE_COUNTS), 1e-7, ids.join("+"));
+  }
+  const ctx = R.richContext(rich, ["P2t2", "P3t1", "S2t1"]);
+  const s1 = R.stageOneTargets(ctx);
+  const ex = exactAltRegal(ctx, s1), bf = R.bruteAltRegal(ctx, s1);
+  near(ex.p1, bf.p1, 1e-12);
+  near(ex.p2, bf.p2, 1e-9);
+  near(ex.avgExalts, bf.avgExalts, 1e-9);
+});
+
+test("planner uses exact odds for 1-2 wanted mods and simulation for more", async () => {
+  const { planCraft } = await import("../public/js/engine/craft.js");
+  const { ITEMS } = await import("../public/js/samples.js");
+  const { item, ident } = parse(ITEMS.ring);
+  const want = (idx) => ident.mods.filter((_, i) => idx.includes(i)).map((m) => ({ mod: m.mod, minMod: m.mod }));
+  const two = planCraft(db, item.base, item.ilvl, [], want([0, 3]), [], { refineMs: 0 });
+  ok(two.methods.every((m) => m.exact), "every method exact with 2 targets");
+  const chaos = two.methods.find((m) => m.kind === "chaos");
+  ok(chaos.p > 0 && chaos.p < 0.05);
+  const again = planCraft(db, item.base, item.ilvl, [], want([0, 3]), [], { refineMs: 0 });
+  eq(again.methods.find((m) => m.kind === "chaos").p, chaos.p, "no noise between runs");
+  const three = planCraft(db, item.base, item.ilvl, [], want([0, 3, 5]), [], { refineMs: 0, trials: 2000 });
+  ok(three.methods.every((m) => !m.exact), "3 targets use simulation");
+});
+
+test("exact odds of an impossible target are exactly zero", async () => {
+  const { planCraft } = await import("../public/js/engine/craft.js");
+  const ring = db.basesByName.get("Two-Stone Ring")[0];
+  // the top life tier can't roll below its required level
+  const { tierOf, families } = tierTables(db, ring, []);
+  const life = families.get(tierOf.get("IncreasedLife5").family)[0];
+  const plan = planCraft(db, ring, life.l - 1, [], [{ mod: life, minMod: life }], [], { refineMs: 0 });
+  const chaos = plan.methods.find((m) => m.kind === "chaos");
+  eq(chaos.exact, true);
+  eq(chaos.p, 0);
+  ok(/can't make/.test(chaos.steps.map((x) => x.detail).join(" ")));
+});
+
 // ------------------------------------------------------------------ runner
 export async function runAll() {
   for (const t of tests) {

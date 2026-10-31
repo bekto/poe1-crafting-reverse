@@ -11,7 +11,8 @@ Work top to bottom. Each item is done when its acceptance check passes, the test
   - Notes: `assignLines` lets a line be explained by up to two mods whose ranges add up; only for lines no single mod explains, so normal items search as before. UI marks such mods "summed line"; new `summedplate` sample.
 - [x] **Check the odds against known values.** Add `test/reference.mjs` with simple cases you can work out by hand: one specific mod from a chaos roll, an alteration hitting one mod, an essence plus one mod. Compare the simulation with the exact answer (tolerance 10%). Document the mod-count and alteration assumptions.
   - Notes: synthetic 6+6 equal-weight pool; chaos 53/144, alt 1/8, alt+aug 1/36, essence + suffix 31/99, all within 1-3%. Assumptions and their sources are in the README.
-- [ ] **Exact probabilities for small cases.** For one to two wanted mods, compute odds exactly, with no Monte Carlo noise. Use Monte Carlo only for larger cases.
+- [x] **Exact probabilities for small cases.** For one to two wanted mods, compute odds exactly, with no Monte Carlo noise. Use Monte Carlo only for larger cases.
+  - Notes: `engine/exact.js`: exponential-clock integral for rerolls (chaos/essence/fossil, with bench and forced mods), memoised DP over weight classes for the alteration route. Matches brute force to ~1e-8 (`test/reference.mjs`); falls back to simulation for 3+ mods or groups spanning both sides.
 
 ## Phase 2: more crafting methods
 - [ ] **Multimod and metacrafting.** Add "Can have up to 3 Crafted Modifiers" (it uses a suffix), "Prefixes/Suffixes Cannot Be Changed" plus Scour or Chaos, and "Cannot Roll Attack/Caster Mods" with Exalts. Put bench costs in steps from `bench` data.

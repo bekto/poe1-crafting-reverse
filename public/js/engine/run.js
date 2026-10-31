@@ -20,7 +20,7 @@ function slimPlan(p) {
     impossibleNaturally: p.impossibleNaturally.map(slimMod),
     methods: p.methods.map((m) => ({
       kind: m.kind, name: m.name, p: m.p, hits: m.hits, trials: m.trials, upperBound: m.upperBound,
-      expected: m.expected, n90: m.n90, currency: m.currency, steps: m.steps, corrupt: m.corrupt || false,
+      expected: m.expected, n90: m.n90, exact: !!m.exact, currency: m.currency, steps: m.steps, corrupt: m.corrupt || false,
       p1: m.p1, p2: m.p2,
     })),
   };
