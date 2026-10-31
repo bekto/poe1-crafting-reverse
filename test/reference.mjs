@@ -139,16 +139,18 @@ export function bruteAltRegal(ctx, s1, block = null, twoModChance = 0.5) {
     ctx.hard.forEach((t) => { if (!has(taken, t)) need[t.side]++; });
     const cn = craftsOk(ctx, taken, rare, true).need;
     const free = (sd, caps) => caps[sd] - taken.filter((m) => m.g === sd).length;
+    const only = block?.onlySide;
     if (need.p > free("p", capsNow) || need.s > free("s", capsNow) || need.p + cn.p > free("p", rare) || need.s + cn.s > free("s", rare) ||
-      free("p", capsNow) + free("s", capsNow) <= 0) { exalts += q * used; return; }
-    const ds = draws(taken, capsNow, meta ? block.tag : null);
+      free("p", capsNow) + free("s", capsNow) <= 0 || (only && (need[only === "p" ? "s" : "p"] > 0 || free(only, capsNow) <= 0))) { exalts += q * used; return; }
+    if (only) capsNow[only === "p" ? "s" : "p"] = 0;
+    const ds = draws(taken, capsNow, meta ? block.tag : null).filter(([m]) => !only || m.g === only);
     if (!ds.length) { exalts += q * used; return; }
     for (const [m, r] of ds) stage2([...taken, m], q * r, used + 1, meta);
   };
   for (const [t, q] of good) {
     for (const [m, r] of draws(t, rare)) {
       const after = [...t, m];
-      const meta = !!block && after.filter((x) => x.g === block.side).length < rare[block.side];
+      const meta = !!block?.tag && after.filter((x) => x.g === block.side).length < rare[block.side];
       stage2(after, (q / p1) * r, 0, meta);
     }
   }
@@ -265,6 +267,14 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     const block = { tag: "attack", side: "s" };
     const ea = exactAltRegal(ctx, s1, block), ba = bruteAltRegal(ctx, s1, block);
     report(["p1", "p2", "avgExalts"].every((k) => relErr(ea[k], ba[k]) <= EXACT_TOLERANCE), `alteration route with "Cannot roll Attack Modifiers" ${ids.join(" + ")}: p2 ${ea.p2.toPrecision(6)} vs ${ba.p2.toPrecision(6)}`);
+  }
+  for (const ids of [["P1t2", "P3t2"], ["S1t2", "S3t2"], ["P1t2", "P3t2", "S2t1"]]) {
+    const ctx = richContext(rich, ids);
+    const s1 = stageOneTargets(ctx);
+    const missing = ctx.hard.filter((t) => !s1.some((x) => x.t === t));
+    const block = { onlySide: missing[0]?.side || "p" };
+    const ea = exactAltRegal(ctx, s1, block), ba = bruteAltRegal(ctx, s1, block);
+    report(["p1", "p2", "avgExalts"].every((k) => relErr(ea[k], ba[k]) <= EXACT_TOLERANCE), `alteration route with one-side (eldritch) exalts ${ids.join(" + ")}: p2 ${ea.p2.toPrecision(6)} vs ${ba.p2.toPrecision(6)}`);
   }
   console.log("\nAnnul simulator with no annulments against the exact alteration route (tolerance 5%):");
   for (const ids of [["P2t2", "P3t1"], ["P2t2", "P3t1", "S2t1"], ["S1t2", "S3t2", "S2t1"]]) {

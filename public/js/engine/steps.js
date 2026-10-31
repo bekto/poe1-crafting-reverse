@@ -85,7 +85,11 @@ export function buildSteps(ctx, m) {
   else if (m.kind === "altregal") {
     const s1 = m.stage1Targets.map((t) => `"${one(t.wantedMod.x)}"`).join(" and ");
     steps.push({ title: "Orb of Transmutation, then spam Orbs of Alteration", detail: `Goal: a magic item with ${s1}. Use an Orb of Augmentation when only one of them shows up and there's a free slot. ${pct(m.p1)} per alteration (about ${fmtN(1 / m.p1)} alterations, ${m.augPerAlt.toFixed(2)} augmentations per alteration).` });
-    if (m.block) {
+    if (m.block?.eldritch) {
+      const el = ctx.db.manual.eldritch, kind = m.block.eldritch;
+      steps.splice(1, 0, eldritchSetupStep(ctx, kind));
+      steps.push({ title: `Regal Orb, then ${el.orbs.exalt}s`, detail: `With the ${eldritchKindName(kind)} implicit dominant, each ${el.orbs.exalt} adds a ${sideName(m.block.onlySide)}, where the missing mods are. From a good magic item, ${pct(m.p2)} chance to finish (${m.avgExalts.toFixed(1)} eldritch exalts per attempt). Overall about ${fmtN(m.expectedAlts)} alterations, ${fmtN(m.expectedRegals)} regals and ${fmtN(m.expectedExalts)} eldritch exalts.` });
+    } else if (m.block) {
       steps.push({ title: "Regal Orb", detail: "Adds one more random mod and makes the item rare." });
       steps.push({ title: `Bench craft "${m.block.mod.x}", then Exalted Orbs`, detail: `Costs ${fmtCost(m.block.cost)}. It takes a ${sideName(m.block.side)} while it's on, and the exalts can't roll ${m.block.tag} mods, so more of them land on the mods you want. If there's no free ${sideName(m.block.side)} after the regal, exalt without it.` });
       steps.push({ title: "Remove the crafted mod at the bench", detail: `From a good magic item, ${pct(m.p2)} chance that the regal + exalts finish the rest (${m.avgExalts.toFixed(1)} exalts per attempt on average). Overall about ${fmtN(m.expectedAlts)} alterations, ${fmtN(m.expectedRegals)} regals and ${fmtN(m.expectedExalts)} exalts.` });
@@ -100,7 +104,14 @@ export function buildSteps(ctx, m) {
     s1[0].detail += m.meta ? ` The other side doesn't matter yet, but leave a free ${sideName(m.meta.mod.g)} for the lock craft.` : " The other side doesn't matter yet.";
     steps.push(...s1);
     const assume = `Assumes the ${L}es fill the item apart from slots kept for bench crafts (${m.keptL} kept).`;
-    if (m.meta) {
+    if (m.eldritch) {
+      const el = ctx.db.manual.eldritch;
+      steps.splice(1, 0, eldritchSetupStep(ctx, m.eldritch));
+      steps.push({
+        title: `Stage 2 — ${el.orbs.chaos}; repeat`,
+        detail: `With the ${eldritchKindName(m.eldritch)} implicit dominant it rerolls only the ${sideName(el.dominance[m.eldritch])}es and keeps every ${L}. Stop when the item has ${targetList(m.stage2Ctx)}. ${pct(m.p2)} per try (about ${fmtN(1 / m.p2)} tries). ${assume}`,
+      });
+    } else if (m.meta) {
       steps.push({
         title: `Stage 2 — bench craft "${m.meta.mod.x}", then a Chaos Orb; repeat`,
         detail: `The craft costs ${fmtCost(m.meta.cost)}. The Chaos Orb keeps every ${L} and rerolls the rest (removing the craft too, so craft it again before each Chaos Orb). Stop when the item has ${targetList(m.stage2Ctx)}. ${pct(m.p2)} per try (about ${fmtN(1 / m.p2)} tries). ${assume}`,
@@ -152,6 +163,21 @@ function awakenerSteps(ctx, m) {
   ];
   for (const c of ctx.crafts) steps.push({ title: `Bench craft "${one(c.option.mod.x)}"`, detail: `Costs ${fmtCost(c.option.cost)}. Needs a free ${sideName(c.option.mod.g)}.` });
   return steps;
+}
+
+const eldritchKindName = (kind) => (kind === "exarch" ? "Searing Exarch" : "Eater of Worlds");
+
+function eldritchSetupStep(ctx, kind) {
+  const el = ctx.db.manual.eldritch;
+  const other = kind === "exarch" ? "eater" : "exarch";
+  const cur = ctx.eldritch;
+  let now = "";
+  if (cur && cur.dominant === kind) now = ` Your item already has the ${eldritchKindName(kind)} implicit dominant.`;
+  else if (cur && cur.dominant) now = ` Your item has the ${eldritchKindName(other)} implicit dominant: use ${el.orbs.conflict}s (each one upgrades one eldritch implicit and downgrades the other, at random) until it flips.`;
+  return {
+    title: `Make the ${eldritchKindName(kind)} implicit dominant`,
+    detail: `Use ${el.implicitSource[kind]}s (and ${el.implicitSource[other]}s if needed) so the ${eldritchKindName(kind)} implicit has a higher tier than the ${eldritchKindName(other)} one; eldritch currency then works on ${sideName(el.dominance[kind])}es.${now}`,
+  };
 }
 
 function annulStep(m) {

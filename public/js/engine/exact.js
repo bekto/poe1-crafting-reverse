@@ -331,11 +331,12 @@ export function exactRerollFirstFrom(ctx, entries, first, forced) {
  * augmentation when only one of the stage-1 mods shows up) and stage 2 (regal, then exalts while the
  * missing mods can still fit), following the same rules as the simulation in craft.js. With a block
  * variant ({tag, side}), a "Cannot roll ... Modifiers" craft goes on after the regal when there is room,
- * and the exalts skip mods with that tag.
+ * and the exalts skip mods with that tag. With {onlySide}, the exalts can only add mods to that side
+ * (Eldritch Exalted Orbs with the matching dominance).
  */
 export function exactAltRegal(ctx, s1, block = null) {
   if (ctx.hard.length > MAX_EXACT_TARGETS || ctx.fixedEntries.length) return null;
-  const model = buildUnits(ctx, ctx.pool, block?.tag);
+  const model = buildUnits(ctx, ctx.pool, block?.tag || null);
   if (!model) return null;
   const crafts = ctx.crafts || [];
   const units = [...model.units.values()];
@@ -411,11 +412,13 @@ export function exactAltRegal(ctx, s1, block = null) {
       ctx.hard.forEach((t, i) => { if (!st.hit[i]) need[t.side]++; });
       const r = craftReserve(crafts, missing & ~st.craftBlocked, ctx.multimodSide, ctx.reserve);
       const free = (side) => capOf(side) - st.n[side];
-      if (need.p > free("p") || need.s > free("s") || need.p + r.p > rare.p - st.n.p || need.s + r.s > rare.s - st.n.s || free("p") + free("s") <= 0) res = { ps: 0, ex: 0 };
+      const otherSide = block?.onlySide ? other(block.onlySide) : null;
+      if (need.p > free("p") || need.s > free("s") || need.p + r.p > rare.p - st.n.p || need.s + r.s > rare.s - st.n.s || free("p") + free("s") <= 0 ||
+        (otherSide && need[otherSide] > 0) || (block?.onlySide && free(block.onlySide) <= 0)) res = { ps: 0, ex: 0 };
     }
     if (!res) {
       const filtered = st.meta && !regal;
-      const open = (side) => st.n[side] < capOf(side);
+      const open = (side) => st.n[side] < capOf(side) && (regal || !block?.onlySide || side === block.onlySide);
       let tot = 0;
       classes.forEach((k, i) => { if (open(k.side)) tot += (k.m - st.c[i]) * (filtered ? k.wx : k.w); });
       roles.forEach((u, r) => { if (open(u.side) && !(st.roles & (1 << r))) tot += filtered ? u.x.w : u.w; });
@@ -424,7 +427,7 @@ export function exactAltRegal(ctx, s1, block = null) {
         let ps = 0, ex = 0;
         const go = (child, pr) => {
           // right after the regal, put the meta craft on if there's room for it
-          if (regal && block) child.meta = child.n[block.side] < rare[block.side];
+          if (regal && block?.tag) child.meta = child.n[block.side] < rare[block.side];
           const c = solve(child, false);
           ps += pr * c.ps;
           ex += pr * c.ex;

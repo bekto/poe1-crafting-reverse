@@ -1,0 +1,11 @@
+{
+  "_comment": [
+    "Eldritch currency (Searing Exarch / Eater of Worlds), patch 3.17 onwards. RePoE exports the implicit mods but not how the currency behaves.",
+    "Source: Path of Exile 3.17.0 patch notes (https://www.pathofexile.com/forum/view-thread/3227838) and the PoE wiki 'Eldritch currency' page; not re-fetched from the build environment.",
+    "Eldritch Chaos, Exalted and Annulment Orbs act on prefixes when the Searing Exarch implicit is dominant (higher tier) and on suffixes when the Eater of Worlds implicit is dominant. Equal tiers: no dominance, the orbs can't be used.",
+    "Orb of Conflict: upgrades one eldritch implicit and downgrades the other, chosen at random, so it can flip dominance."
+  ],
+  "dominance": { "exarch": "p", "eater": "s" },
+  "implicitSource": { "exarch": "Eldritch Ember", "eater": "Eldritch Ichor" },
+  "orbs": { "chaos": "Eldritch Chaos Orb", "exalt": "Eldritch Exalted Orb", "annul": "Eldritch Orb of Annulment", "conflict": "Orb of Conflict" }
+}

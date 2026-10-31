@@ -37,7 +37,7 @@ export function parseItemText(db, rawText) {
   const head = sections[0] || [];
   const item = {
     clsDisplay: null, cls: null, rarity: null, name: null, baseLine: null, base: null,
-    ilvl: null, influences: [], flags: new Set(), implicitLines: [], enchantLines: [],
+    ilvl: null, influences: [], flags: new Set(), implicitLines: [], implicitKinds: [], enchantLines: [],
     explicit: [], // {text, crafted, fractured, block?}
     advanced: false, unknownLines: [],
   };
@@ -87,6 +87,7 @@ export function parseItemText(db, rawText) {
           tier: h[4] ? +h[4] : null,
           crafted: /Master Crafted|Crafted/.test(pre),
           fractured: /Fractured/.test(pre),
+          eldritch: /Searing Exarch/.test(pre) ? "exarch" : /Eater of Worlds/.test(pre) ? "eater" : null,
           lines: [],
         };
         continue;
@@ -100,10 +101,10 @@ export function parseItemText(db, rawText) {
         continue;
       }
       if (currentBlock && currentBlock.skip) {
-        if (currentBlock.implicit || marker === "implicit") item.implicitLines.push(t);
+        if (currentBlock.implicit || marker === "implicit") { item.implicitLines.push(t); item.implicitKinds.push(currentBlock.eldritch); }
         continue;
       }
-      if (marker === "implicit") item.implicitLines.push(t);
+      if (marker === "implicit") { item.implicitLines.push(t); item.implicitKinds.push(null); }
       else if (marker === "enchant" || marker === "scourge" || marker === "crucible") item.enchantLines.push(t);
       else item.explicit.push({ text: t, crafted: marker === "crafted", fractured: marker === "fractured" });
     }
@@ -124,9 +125,35 @@ export function parseItemText(db, rawText) {
       }
     }
     item.base = best;
+    item.eldritch = identifyEldritch(db, item);
   }
   item.errors = errors;
   return item;
+}
+
+/**
+ * Finds the Searing Exarch and Eater of Worlds implicits among the implicit lines.
+ * Returns {exarch: {mod, rank, line}|null, eater: ..., dominant: "exarch"|"eater"|null}.
+ */
+export function identifyEldritch(db, item) {
+  const out = { exarch: null, eater: null, dominant: null };
+  const tags = new Set(item.base.tags);
+  const cands = db.eldritch.filter((m) => m.sw.some(([t]) => tags.has(t)));
+  if (!cands.length) return out;
+  const want = { exarch: item.flags.has("exarch"), eater: item.flags.has("eater") };
+  item.implicitLines.forEach((line, i) => {
+    const hinted = item.implicitKinds[i];
+    for (const kind of hinted ? [hinted] : ["exarch", "eater"]) {
+      if (out[kind]) continue;
+      if (!hinted && !want[kind] && (want.exarch || want.eater)) continue;
+      const m = cands.find((c) => c.kind === kind && c.tpl.length === 1 && matchLine(c.tpl[0], line)?.inRange);
+      if (m) { out[kind] = { mod: m, rank: m.r, line }; break; }
+    }
+  });
+  if (out.exarch && out.eater && out.exarch.rank !== out.eater.rank) out.dominant = out.exarch.rank > out.eater.rank ? "exarch" : "eater";
+  else if (out.exarch && !out.eater) out.dominant = "exarch";
+  else if (out.eater && !out.exarch) out.dominant = "eater";
+  return out;
 }
 
 /** Identifies explicit mods on a parsed item. Returns {mods:[...], unknown:[...]} */

@@ -75,12 +75,12 @@ export class State {
 }
 
 /** Adds one random mod (reroll / regal / exalt). block: mods with these BLOCK_BITS can't be picked. */
-export function addRandom(P, st, rng, block = 0, only = null) {
-  const pOpen = st.nP < st.max.p, sOpen = st.nS < st.max.s;
+export function addRandom(P, st, rng, block = 0, only = null, onlySide = -1) {
+  const pOpen = st.nP < st.max.p && onlySide !== 1, sOpen = st.nS < st.max.s && onlySide !== 0;
   const stamp = st.stamp, removed = P.removed, side = P.side, w = P.w, bits = P.blockBits;
   const skip = (i) => removed[i] === stamp || (block && bits[i] & block) || (only && !only[i]);
   let total;
-  if (!block && !only) total = (pOpen ? Math.max(0, st.tot[0]) : 0) + (sOpen ? Math.max(0, st.tot[1]) : 0);
+  if (!block && !only && onlySide < 0) total = (pOpen ? Math.max(0, st.tot[0]) : 0) + (sOpen ? Math.max(0, st.tot[1]) : 0);
   else {
     total = 0;
     for (let i = 0; i < P.n; i++) if (!skip(i) && (side[i] === 0 ? pOpen : sOpen)) total += w[i];

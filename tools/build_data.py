@@ -188,6 +188,20 @@ for fid, f in fossils.items():
         "desc": list((f.get("descriptions") or {}).values()),
     })
 
+# ---- eldritch implicits (Searing Exarch / Eater of Worlds) --------------
+# rank 1-6 is the number at the end of the mod id (Lesser ... Perfect)
+import re
+eldritch_out = []
+for mid, m in mods.items():
+    kind = {"searing_exarch_implicit": "x", "eater_of_worlds_implicit": "e"}.get(m["generation_type"])
+    if not kind:
+        continue
+    rank = re.search(r"(\d+)_*$", mid)
+    sw = [[w["tag"], w["weight"]] for w in m.get("spawn_weights", []) if w["weight"] > 0 and w["tag"] in all_tags]
+    if not rank or not sw or not m.get("text"):
+        continue
+    eldritch_out.append({"id": mid, "k": kind, "x": m["text"], "r": int(rank.group(1)), "sw": sw})
+
 out = {
     "version": VERSION,
     "classes": classes_out,
@@ -197,9 +211,10 @@ out = {
     "essences": ess_out,
     "fossils": fos_out,
     "bench": bench_out,
+    "eldritch": eldritch_out,
 }
 OUT.parent.mkdir(parents=True, exist_ok=True)
 with open(OUT, "w", encoding="utf-8") as f:
     json.dump(out, f, separators=(",", ":"), ensure_ascii=False)
 print(f"bases={len(bases_out)} mods={len(mods_out)} essences={len(ess_out)} fossils={len(fos_out)} "
-      f"bench={len(bench_out)} size={OUT.stat().st_size/1e6:.2f} MB")
+      f"bench={len(bench_out)} eldritch={len(eldritch_out)} size={OUT.stat().st_size/1e6:.2f} MB")

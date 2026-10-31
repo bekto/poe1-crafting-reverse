@@ -64,7 +64,8 @@ function renderItem() {
     <span class="name">${esc(item.rarity === "rare" ? item.name : item.base.name)}</span>
     <span class="tag">${esc(item.base.name)} · ${esc(db.classes[item.base.cls].name)} · item level ${item.ilvl} · ${esc(item.rarity)}</span>
     ${item.influences.length ? `<span class="infl">${item.influences.map(cap).join(" + ")} influence</span>` : ""}
-    ${flags.length ? `<span class="infl">${flags.map(cap).join(", ")}</span>` : ""}`;
+    ${flags.length ? `<span class="infl">${flags.map(cap).join(", ")}</span>` : ""}
+    ${eldritchText(item.eldritch)}`;
   $("ilvlInput").value = item.ilvl;
   const list = $("modList");
   list.innerHTML = "";
@@ -104,6 +105,13 @@ function renderItem() {
   $("itemPanel").scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
+function eldritchText(el) {
+  if (!el || (!el.exarch && !el.eater)) return "";
+  const part = (name, x) => (x ? `${name} rank ${x.rank}` : null);
+  const dom = el.dominant ? ` · ${el.dominant === "exarch" ? "Searing Exarch" : "Eater of Worlds"} dominant` : " · no dominance";
+  return `<span class="infl">Eldritch: ${[part("Searing Exarch", el.exarch), part("Eater of Worlds", el.eater)].filter(Boolean).join(", ")}${dom}</span>`;
+}
+
 function rangeText(mod) {
   return mod.x.replace(/\n/g, " / ");
 }
@@ -115,7 +123,7 @@ async function findPlans() {
   const fixedIds = rows.filter((r) => r.m.fractured).map((r) => r.m.mod.id);
   if (!wanted.length) { showMsg("unknownMsg", "Tick at least one mod you want.", "warn"); return; }
   const ilvl = Math.max(1, Math.min(100, parseInt($("ilvlInput").value, 10) || item.ilvl));
-  const req = { baseId: item.base.id, ilvl, influences: item.influences, wanted, fixedIds, trials: 20000 };
+  const req = { baseId: item.base.id, ilvl, influences: item.influences, wanted, fixedIds, trials: 20000, eldritch: item.eldritch ? { dominant: item.eldritch.dominant } : null };
   $("resultPanel").hidden = false;
   $("progress").hidden = false;
   $("methods").innerHTML = "";
@@ -191,9 +199,9 @@ function renderPlan(plan, ilvl) {
       : `<b>&lt; 1 in ${oneIn(m.upperBound)}</b><small>no hits in ${m.trials.toLocaleString()} simulated tries</small>`;
     const kind = {
       chaos: "Chaos spam", essence: "Essence", fossil: "Fossils", harvest: "Harvest reforge",
-      altregal: m.block ? "Alteration route with a metacraft" : "Alteration route · cheap currency, many tries",
+      altregal: m.eldritch ? "Alteration route with eldritch exalts" : m.block ? "Alteration route with a metacraft" : "Alteration route · cheap currency, many tries",
       influenceExalt: "Influenced Exalted Orb", awakener: "Awakener's Orb · two influences",
-      lock: m.harvestKeep ? "Two stages · Harvest rerolls one side" : "Metacraft · two stages, each stage-2 try needs a new lock craft",
+      lock: m.eldritch ? "Two stages · Eldritch Chaos rerolls one side" : m.harvestKeep ? "Two stages · Harvest rerolls one side" : "Metacraft · two stages, each stage-2 try needs a new lock craft",
     }[m.kind] + (m.multimod ? " · multimod" : "") + (m.approximate ? " · Harvest data is hand-written" : "");
     d.innerHTML = `
       <summary><span class="mname">${esc(m.name)}<span class="kind">${kind}${m.corrupt ? " · corrupted essence" : ""}</span></span><span class="odds">${odds}</span></summary>

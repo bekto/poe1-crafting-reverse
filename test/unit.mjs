@@ -535,6 +535,58 @@ test("influenced Exalted Orb and Awakener's Orb plans", async () => {
   ok(ie.steps[0].title.includes("Sorcerer Boots") && !/hunter influence/.test(ie.steps[0].title), "stage 1 starts from a base without influence");
 });
 
+// ------------------------------------------------------------------ eldritch
+test("eldritch implicits: rank and dominance from Ctrl+C and Ctrl+Alt+C", async () => {
+  const { ITEMS } = await import("../public/js/samples.js");
+  const { item } = parse(ITEMS.eldritchboots);
+  eq(item.eldritch.exarch.rank, 4);
+  eq(item.eldritch.eater.rank, 2);
+  eq(item.eldritch.dominant, "exarch");
+  deq(item.base.implicits, ["FireAndLightningResistImplicitBoots1"], "base variant still found from the base implicit");
+  const adv = parse(`Item Class: Boots
+Rarity: Rare
+Ghoul Spur
+Two-Toned Boots
+--------
+Item Level: 86
+--------
+{ Implicit Modifier — Elemental, Fire, Lightning, Resistance }
++12(8-12)% to Fire and Lightning Resistances (implicit)
+{ Searing Exarch Implicit Modifier (Lesser) — Speed }
+5% increased Movement Speed (implicit)
+{ Eater of Worlds Implicit Modifier (Greater) — Life }
+8% increased Life Regeneration rate (implicit)
+--------
+{ Prefix Modifier "Rotund" (Tier: 4) — Life }
++92(85-99) to maximum Life
+--------
+Searing Exarch Item
+Eater of Worlds Item`).item;
+  eq(adv.eldritch.exarch.rank, 1);
+  eq(adv.eldritch.eater.rank, 2);
+  eq(adv.eldritch.dominant, "eater");
+  const plain = parse(ITEMS.boots).item;
+  eq(plain.eldritch.dominant, null, "no eldritch implicits");
+});
+
+test("eldritch methods: Eldritch Chaos two-stage and Eldritch Exalted Orbs", async () => {
+  const { planCraft } = await import("../public/js/engine/craft.js");
+  const { ITEMS } = await import("../public/js/samples.js");
+  const { item, ident } = parse(ITEMS.eldritchboots);
+  const want = ident.mods.filter((_, i) => [0, 1, 2].includes(i)).map((m) => ({ mod: m.mod, minMod: m.mod }));
+  const plan = planCraft(db, item.base, item.ilvl, [], want, [], { refineMs: 0, trials: 4000, eldritch: { dominant: item.eldritch.dominant } });
+  const ec = plan.methods.filter((m) => m.kind === "lock" && m.eldritch);
+  eq(ec.length, 2, "one per dominance");
+  ok(ec.every((m) => m.steps.some((s) => /Eldritch Chaos Orb/.test(s.title)) && m.steps.some((s) => /dominant/.test(s.title))));
+  const ee = plan.methods.find((m) => m.kind === "altregal" && m.block?.eldritch);
+  ok(ee, "eldritch exalt variant: both missing mods are prefixes");
+  eq(ee.block.onlySide, "p");
+  ok(ee.p2 >= plan.methods.find((m) => m.kind === "altregal" && !m.block).p2 - 0.02, "one-side exalts don't do worse");
+  const ring = parse(ITEMS.ring);
+  const rp = planCraft(db, ring.item.base, ring.item.ilvl, [], ring.ident.mods.slice(0, 2).map((m) => ({ mod: m.mod, minMod: m.mod })), [], { refineMs: 0, trials: 2000 });
+  ok(!rp.methods.some((m) => m.eldritch || m.block?.eldritch), "rings can't have eldritch implicits");
+});
+
 // ------------------------------------------------------------------ Harvest
 test("Harvest data is loaded from data/manual and its plans are marked approximate", async () => {
   const h = db.manual.harvest;

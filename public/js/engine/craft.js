@@ -54,6 +54,7 @@ export function buildContext(db, base, ilvl, influences, wanted, fixed = [], opt
     counts: opts.counts || rareModCounts(base),
     noExact: !!opts.noExact,
     prices: opts.prices || null,
+    eldritch: opts.eldritch || null, // the item's eldritch implicits as parsed ({dominant})
   };
 }
 
@@ -238,7 +239,8 @@ function altRegalMethod(ctx, trials, block = null) {
   st.bind(P);
   const magicMax = { p: 1, s: 1 };
   const rareMax = maxAffixes(ctx.base);
-  const metaSide = block ? (block.side === "p" ? 0 : 1) : -1;
+  const metaSide = block?.tag ? (block.side === "p" ? 0 : 1) : -1;
+  const onlySide = block?.onlySide ? (block.onlySide === "p" ? 0 : 1) : -1;
   const blockBit = block ? BLOCK_BITS[block.tag] : 0;
 
   let augs = 0;
@@ -271,7 +273,7 @@ function altRegalMethod(ctx, trials, block = null) {
     st.max = { ...rareMax };
     addRandom(P, st, rng); // regal
     // the meta craft fills a slot while it's on; it comes off before the bench crafts
-    const meta = block && st.free(metaSide) > 0;
+    const meta = !!block?.tag && st.free(metaSide) > 0;
     if (meta) st.max[metaSide === 0 ? "p" : "s"]--;
     const room = meta ? metaSide : null;
     let used = 0;
@@ -282,7 +284,8 @@ function altRegalMethod(ctx, trials, block = null) {
       const r = craftReserve(ctx.crafts, P.allCrafts & ~st.craftMask & ~blockedCrafts(P, st), ctx.multimodSide, ctx.reserve);
       const real = (sd) => st.free(sd) + (room === sd ? 1 : 0);
       if (need[0] > st.free(0) || need[1] > st.free(1) || need[0] + r.p > real(0) || need[1] + r.s > real(1) || st.free(0) + st.free(1) <= 0) break;
-      if (!addRandom(P, st, rng, meta ? blockBit : 0)) break;
+      if (onlySide >= 0 && (need[1 - onlySide] > 0 || st.free(onlySide) <= 0)) break;
+      if (!addRandom(P, st, rng, meta ? blockBit : 0, null, onlySide)) break;
       used++;
     }
     exalts += used;
@@ -324,7 +327,7 @@ function altRegalResult(ctx, s1, r, exact, block) {
     restartCurrency: restart,
     annul,
     kind: "altregal",
-    name: block ? `Alteration → Regal → "${block.mod.x}" + Exalted Orb` : "Alteration → Regal → Exalted Orb",
+    name: block?.eldritch ? `Alteration → Regal → ${ctx.db.manual.eldritch.orbs.exalt}` : block ? `Alteration → Regal → "${block.mod.x}" + Exalted Orb` : "Alteration → Regal → Exalted Orb",
     block,
     stage1Targets: s1.map((x) => x.t),
     p1: r.p1, p2: r.p2, augPerAlt: r.augPerAlt, avgExalts: r.avgExalts,
@@ -379,6 +382,8 @@ function lockMethods(ctx, trials, wanted) {
   const lockers = [
     ...[["p", "lockPrefixes"], ["s", "lockSuffixes"]].filter(([, k]) => db.meta?.[k]).map(([L, k]) => ({ L, meta: db.meta[k] })),
     ...(h?.reforgeKeep || []).map((k) => ({ L: k.keep, harvest: k, approximate: !!h.approximate })),
+    // Eldritch Chaos Orb with the other side's influence dominant
+    ...(eldritchCapable(ctx) ? Object.entries(db.manual.eldritch.dominance).map(([kind, side]) => ({ L: side === "p" ? "s" : "p", eldritch: kind })) : []),
   ];
   for (const lk of lockers) {
     const { L, meta } = lk;
@@ -404,11 +409,11 @@ function lockMethods(ctx, trials, wanted) {
     delete r2.rerun;
     const p1 = stage1.p, p2 = r2.p;
     const tries = p1 > 0 && p2 > 0 ? 1 / p1 + 1 / p2 : null;
-    const second = meta ? `"${meta.mod.x}" + Chaos Orb` : `Harvest "${lk.harvest.text}"`;
+    const second = meta ? `"${meta.mod.x}" + Chaos Orb` : lk.eldritch ? `${db.manual.eldritch.orbs.chaos} (${eldritchName(lk.eldritch)} dominant)` : `Harvest "${lk.harvest.text}"`;
     out.push({
       kind: "lock",
       name: `${stage1.name}, then ${second}`,
-      lockSide: L, meta, harvestKeep: lk.harvest || null, stage1, stage1Ctx: ctx1, stage2Ctx: ctx2,
+      lockSide: L, meta, harvestKeep: lk.harvest || null, eldritch: lk.eldritch || null, stage1, stage1Ctx: ctx1, stage2Ctx: ctx2,
       approximate: !!(lk.approximate || stage1.approximate),
       p1, p2, keptL,
       exact: !!(stage1.exact && r2.exact),
@@ -418,7 +423,7 @@ function lockMethods(ctx, trials, wanted) {
       expected: tries,
       n90: null,
       upperBound: tries ? null : 3 / trials,
-      currency: [...stage1.currency, meta ? ["Chaos Orb", 1] : ["Harvest lifeforce", lk.harvest.cost]],
+      currency: [...stage1.currency, meta ? ["Chaos Orb", 1] : lk.eldritch ? [db.manual.eldritch.orbs.chaos, 1] : ["Harvest lifeforce", lk.harvest.cost]],
     });
   }
   return out;
@@ -514,6 +519,29 @@ function awakenerMethods(ctx, trials, wanted) {
   }];
 }
 
+// ---------------------------------------------------------------- eldritch
+
+/** Can this base get Searing Exarch / Eater of Worlds implicits (and so use eldritch currency)? */
+export function eldritchCapable(ctx) {
+  if (!ctx.db.manual?.eldritch) return false;
+  const tags = new Set(ctx.base.tags);
+  return ctx.db.eldritch.some((m) => m.sw.some(([t]) => tags.has(t)));
+}
+
+export const eldritchName = (kind) => (kind === "exarch" ? "Searing Exarch" : "Eater of Worlds");
+
+/** Alteration route where the exalts are Eldritch Exalted Orbs: only the side that still misses mods gets new mods. */
+function eldritchExaltVariant(ctx) {
+  if (!eldritchCapable(ctx)) return null;
+  const s1 = stageOneTargets(ctx);
+  const missing = ctx.hard.filter((t) => !s1.some((x) => x.t === t));
+  const sides = new Set(missing.map((t) => t.side));
+  if (sides.size !== 1) return null;
+  const side = [...sides][0];
+  const kind = Object.entries(ctx.db.manual.eldritch.dominance).find(([, sd]) => sd === side)?.[0];
+  return kind ? { eldritch: kind, onlySide: side } : null;
+}
+
 function pickCrafts(wanted, crafts) {
   return wanted.filter((w) => crafts.some((t) => t.wantedMod === w.mod));
 }
@@ -529,12 +557,13 @@ export function planCraft(db, base, ilvl, influences, wanted, fixed = [], opts =
   const trials = opts.trials || 20000;
   const noExact = opts.exact === false; // force Monte Carlo (used by the tests)
   const prices = opts.prices || null; // {currency name: price in Chaos Orbs}
-  const ctx = buildContext(db, base, ilvl, influences, wanted, fixed, { noExact, prices });
+  const ctx = buildContext(db, base, ilvl, influences, wanted, fixed, { noExact, prices, eldritch: opts.eldritch });
   const methods = [];
   methods.push(...rerollMethods(ctx, trials));
   const ar = altRegalMethod(ctx, Math.floor(trials / 2));
   if (ar) methods.push(ar);
-  for (const b of blockVariants(ctx)) {
+  const ev = eldritchExaltVariant(ctx);
+  for (const b of [...blockVariants(ctx), ...(ev ? [ev] : [])]) {
     const m = altRegalMethod(ctx, Math.floor(trials / 2), b);
     if (m && ar && m.p > ar.p) methods.push(m);
   }

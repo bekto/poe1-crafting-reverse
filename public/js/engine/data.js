@@ -12,7 +12,7 @@ export const META_GROUPS = {
 export const INFLUENCES = ["shaper", "elder", "crusader", "hunter", "redeemer", "warlord"];
 
 // hand-written data under public/data/manual/ (mechanics RePoE doesn't export)
-export const MANUAL_FILES = ["harvest"];
+export const MANUAL_FILES = ["harvest", "eldritch"];
 
 /** Loads poe1.json and the manual files. readJson(path relative to public/data/) returns a promise of JSON. */
 export async function loadDb(readJson) {
@@ -43,6 +43,7 @@ export function indexData(raw, manual = {}) {
     db.modById.set(m.id, m);
   }
   for (const im of raw.implicits) im.tpl = compileTemplate(im.x);
+  db.eldritch = (raw.eldritch || []).map((m) => ({ ...m, kind: m.k === "x" ? "exarch" : "eater", tpl: compileTemplate(m.x) }));
   for (const b of raw.bases) {
     if (!db.basesByName.has(b.name)) db.basesByName.set(b.name, []);
     db.basesByName.get(b.name).push(b);

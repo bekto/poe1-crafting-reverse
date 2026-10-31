@@ -15,9 +15,31 @@ export const LABELS = {
   synthamulet: "Synthesised amulet",
   summedplate: "Body armour, Ctrl+C with a summed life line",
   awakened: "Helmet with two influences (Crusader + Hunter)",
+  eldritchboots: "Boots with eldritch implicits",
 };
 
 export const ITEMS = {
+eldritchboots: `Item Class: Boots
+Rarity: Rare
+Ghoul Spur
+Two-Toned Boots
+--------
+Evasion Rating: 120
+Energy Shield: 25
+--------
+Item Level: 86
+--------
++12% to Fire and Lightning Resistances (implicit)
+8% increased Movement Speed (implicit)
+8% increased Life Regeneration rate (implicit)
+--------
++92 to maximum Life
+25% increased Movement Speed
++44% to Cold Resistance
++27% to Chaos Resistance
+--------
+Searing Exarch Item
+Eater of Worlds Item`,
 ring: `Item Class: Rings
 Rarity: Rare
 Storm Loop
