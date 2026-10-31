@@ -1,7 +1,7 @@
 // Alteration route, annul variant: when an exalt misses, use an Orb of Annulment and keep exalting, instead of
 // starting over from a new magic item. Simulated, because the annul loops make the exact state space too large.
 import { satisfies, craftReserve, maxAffixes } from "./pool.js";
-import { MAGIC_TWO_MOD_CHANCE } from "./assumptions.js";
+import { stageOne } from "./stage1.js";
 import { mulberry32 } from "./sim.js";
 
 export const ANNUL_RUNS = 4000;
@@ -18,13 +18,8 @@ export function simulateAnnulRoute(ctx, s1, maxAnnuls, runs = ANNUL_RUNS, seed =
   const entries = ctx.pool.filter((e) => e.w > 0 && !ctx.fixedEntries.some((f) => e.mod.gr.some((g) => f.mod.gr.includes(g))));
   const rare = maxAffixes(ctx.base);
   const crafts = ctx.crafts;
-  const W = { p: 0, s: 0 };
-  for (const e of entries) W[e.mod.g] += e.w;
-  const Wt = W.p + W.s;
-  const satEntries = s1.map((x) => entries.filter((e) => satisfies(e.mod, x.t)));
-  const satW = satEntries.map((list) => list.reduce((a, e) => a + e.w, 0));
-  if (satW.some((w) => !(w > 0))) return null;
-
+  const so = stageOne(ctx, s1);
+  if (!so) return null;
   const pickFrom = (list) => {
     let tot = 0;
     for (const e of list) tot += e.w;
@@ -32,18 +27,8 @@ export function simulateAnnulRoute(ctx, s1, maxAnnuls, runs = ANNUL_RUNS, seed =
     for (const e of list) { r -= e.w; if (r <= 0) return e.mod; }
     return list[list.length - 1].mod;
   };
-  // a good magic item, drawn from its exact distribution given that stage 1 succeeded
   const fixed = ctx.fixedEntries.map((e) => e.mod);
-  const goodMagic = () => {
-    if (fixed.length) return [...fixed, pickFrom(satEntries[0])]; // fractured: the open side got the stage-1 mod
-    if (s1.length === 2) return [pickFrom(satEntries[0]), pickFrom(satEntries[1])];
-    const side = s1[0].t.side, os = side === "p" ? "s" : "p";
-    const alone = (1 - MAGIC_TWO_MOD_CHANCE) * satW[0] / Wt;
-    const pair = MAGIC_TWO_MOD_CHANCE * satW[0] * W[os] * (1 / (Wt * W[os]) + 1 / (Wt * W[side]));
-    const a = pickFrom(satEntries[0]);
-    if (rng() * (alone + pair) < alone) return [a];
-    return [a, pickFrom(entries.filter((e) => e.mod.g === os))];
-  };
+  const goodMagic = () => so.sample(rng);
   const draw = (item) => {
     const groups = new Set(item.flatMap((m) => m.gr));
     const n = { p: 0, s: 0 };

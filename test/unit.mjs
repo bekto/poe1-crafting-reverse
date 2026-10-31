@@ -680,13 +680,27 @@ test("Harvest data is loaded from data/manual and its plans are marked approxima
   ok(hv.some((m) => /Life/.test(m.name)) && hv.some((m) => /Cold/.test(m.name)), "tags of the wanted mods");
   ok(!hv.some((m) => /Physical/.test(m.name)), "no unrelated tags");
   ok(hv.every((m) => m.approximate && m.p > 0));
+  ok(hv.every((m) => m.steps.some((s) => /Horticrafting Station/.test(s.title))), "Harvest plans have their step");
   ok(plan.methods.some((m) => m.kind === "lock" && m.harvestKeep && m.approximate), "Harvest keep-side reforge");
+});
+
+test("every planned method has at least one step after getting the base", async () => {
+  const { planCraft } = await import("../public/js/engine/craft.js");
+  const { ITEMS } = await import("../public/js/samples.js");
+  for (const [key, idx] of [["ring", [0, 3]], ["boots", [0, 1, 2]], ["awakened", [1, 2, 3]], ["veiledamulet", [0, 3]], ["eldritchboots", [0, 1, 2]], ["fractured", [1, 3]]]) {
+    const { item, ident } = parse(ITEMS[key]);
+    const fixed = ident.mods.filter((m) => m.fractured).map((m) => m.mod);
+    const want = ident.mods.filter((m, i) => !m.fractured && idx.includes(i)).map((m) => ({ mod: m.mod, minMod: m.mod }));
+    const plan = planCraft(db, item.base, item.ilvl, item.influences, want, fixed, { refineMs: 0, trials: 3000, eldritch: item.eldritch });
+    for (const m of plan.methods) ok(m.steps.length >= 2 && m.steps.every((s) => s.title && s.detail), `${key}: ${m.kind} ${m.name}`);
+  }
 });
 
 // ------------------------------------------------------------------ runner
 export async function runAll() {
   for (const t of tests) {
-    try { await t.fn(); console.log("  ok  ", t.name); }
+    const t0 = Date.now();
+    try { await t.fn(); const ms = Date.now() - t0; console.log("  ok  ", t.name + (ms > 500 ? ` (${(ms / 1000).toFixed(1)} s)` : "")); }
     catch (e) { failed++; console.log("  FAIL", t.name, "\n       ", e.message.split("\n").join("\n        ")); }
   }
   console.log(`\n${tests.length - failed}/${tests.length} tests passed, ${assertions} assertions`);

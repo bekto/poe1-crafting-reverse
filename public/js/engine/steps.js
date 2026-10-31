@@ -82,7 +82,7 @@ export function buildSteps(ctx, m) {
     title: `Get a ${ctx.base.name}${infl}`,
     detail: `Item level ${ctx.ilvl} (the plan was worked out at this level; at least ${minIlvl} is needed for the tiers you asked for)${fixedTxt}.${ctx.influences.length > 1 ? " A base with two influences comes from an Awakener's Orb (see that plan)." : ""}`,
   });
-  if (["chaos", "essence", "fossil"].includes(m.kind)) steps.push(...rerollSteps(ctx, m));
+  if (["chaos", "essence", "fossil", "harvest"].includes(m.kind)) steps.push(...rerollSteps(ctx, m));
   else if (m.kind === "altregal") {
     const s1 = m.stage1Targets.map((t) => `"${one(t.wantedMod.x)}"`).join(" and ");
     const frac = ctx.fixedEntries.length ? " The fractured mod stays through every alteration, so only the other side changes; use an Orb of Augmentation whenever that side comes out empty." : " Use an Orb of Augmentation when only one of them shows up and there's a free slot.";

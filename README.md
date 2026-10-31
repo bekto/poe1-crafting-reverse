@@ -35,6 +35,32 @@ public/
   js/samples.js        example items
   data/poe1.json       game data built from RePoE
   data/manual/         hand-written mechanics RePoE doesn't export (Harvest, eldritch, recombinator, league), with sources
+  js/engine/data.js         loads the data (poe1.json + data/manual/*.json), compiles mod text into regexes
+  js/engine/parse.js        parses Ctrl+C / Ctrl+Alt+C item text: mods, tiers, summed lines, eldritch implicits
+  js/engine/pool.js         mod pools, spawn weights, tiers, bench options, the bench-slot rule
+  js/engine/assumptions.js  every mechanic the game data doesn't give (see "Assumptions" below)
+  js/engine/exact.js        exact odds: reroll integral, alteration-route DP, unveil choices
+  js/engine/sim.js          Monte Carlo core (used for 3+ wanted mods)
+  js/engine/stage1.js       alteration stage 1 in closed form, plus a sampler of good magic items
+  js/engine/annul.js        the annul-on-miss variant of the alteration route (simulated)
+  js/engine/craft.js        the planner: builds every method and ranks them
+  js/engine/steps.js        turns a method into step-by-step text
+  js/engine/run.js          shared entry point (worker and main-thread fallback)
+tools/build_data.py repoe/data public/data/poe1.json "$(cat repoe/version.txt)"
+```
+
+You don't need to change any code for a new league, unless GGG adds a new crafting system.
+
+## Project layout
+
+```
+public/
+  index.html, css/style.css
+  js/app.js            UI
+  js/worker.js         runs the simulations in a background thread
+  js/samples.js        example items
+  data/poe1.json       game data built from RePoE
+  data/manual/         hand-written mechanics RePoE doesn't export (Harvest, eldritch, recombinator, league), with sources
   js/engine/data.js    loads the data, compiles mod text into regexes
   js/engine/parse.js   parses Ctrl+C / Ctrl+Alt+C item text and identifies each mod and tier
   js/engine/pool.js    mod pools, spawn weights, tiers, bench options

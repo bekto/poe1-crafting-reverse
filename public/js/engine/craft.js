@@ -8,6 +8,7 @@ import {
 } from "./sim.js";
 import { buildSteps, pickBench } from "./steps.js";
 import { simulateAnnulRoute, ANNUL_LIMITS } from "./annul.js";
+import { stageOne } from "./stage1.js";
 
 export { currencyName } from "./steps.js";
 
@@ -242,53 +243,25 @@ function altRegalMethod(ctx, trials, block = null) {
   if (ex) return altRegalResult(ctx, s1, ex, true, block);
 
   const P = new CompiledPool(ctx, ctx.pool);
-  const s1Mask = s1.reduce((m, x) => m | (1 << x.i), 0);
-  const s1Sides = new Set(s1.map((x) => (x.t.side === "p" ? 0 : 1)));
   const rng = mulberry32(900); // same stage 1 for every variant
   const st = new State(ctx.groupIndex.size + 8);
   st.bind(P);
-  const magicMax = { p: 1, s: 1 };
   const rareMax = maxAffixes(ctx.base);
   const metaSide = block?.tag ? (block.side === "p" ? 0 : 1) : -1;
   const onlySide = block?.onlySide ? (block.onlySide === "p" ? 0 : 1) : -1;
   const blockBit = block ? BLOCK_BITS[block.tag] : 0;
 
-  let augs = 0;
-  const fixedInfos = fixedMods.map((m) => fixedInfo(ctx, m));
-  const altRoll = () => {
-    st.reset(magicMax);
-    if (fixedInfos.length) {
-      // fractured: the alteration keeps the fractured mod; augment when the open side comes out empty
-      for (const f of fixedInfos) st.add(f.side, f.groups, f.mask, f.craftMask);
-      if (rng() < MAGIC_TWO_MOD_CHANCE) addRandom(P, st, rng);
-      if (st.count === 1) { augs++; addRandom(P, st, rng); }
-      return (st.mask & s1Mask) === s1Mask;
-    }
-    const n = rng() < MAGIC_TWO_MOD_CHANCE ? 2 : 1;
-    for (let k = 0; k < n; k++) addRandom(P, st, rng);
-    // augment if a needed side is still empty
-    if (st.count === 1) {
-      const needOther = [...s1Sides].some((sd) => st.free(sd) > 0) && (st.mask & s1Mask) !== s1Mask && (st.mask & s1Mask) !== 0;
-      if (needOther) { augs++; addRandom(P, st, rng); }
-    }
-    return (st.mask & s1Mask) === s1Mask;
-  };
-  // stage 1 probability
-  const n1 = trials * 2;
-  let h1 = 0;
-  for (let t = 0; t < n1; t++) if (altRoll()) h1++;
-  const p1 = h1 / n1;
-  const augPerAlt = augs / n1;
-  if (p1 < 1e-4) return null;
+  // stage 1 in closed form; stage 2 starts from good magic items drawn directly
+  const so = stageOne(ctx, s1);
+  if (!so || so.p1 <= 0) return null;
+  const { p1, augPerAlt } = so;
 
   // stage 2 starting from successful magic items
-  const n2 = Math.min(4000, Math.max(500, Math.floor(200000 * p1)));
+  const n2 = Math.max(4000, trials);
   let h2 = 0, exalts = 0;
   for (let t = 0; t < n2; t++) {
-    let ok = false, guard = 0;
-    do { ok = altRoll(); } while (!ok && ++guard < 1e6);
-    if (!ok) break;
-    st.max = { ...rareMax };
+    st.reset(rareMax);
+    for (const m of so.sample(rng)) { const f = fixedInfo(ctx, m); st.add(f.side, f.groups, f.mask, f.craftMask); }
     addRandom(P, st, rng); // regal
     // the meta craft fills a slot while it's on; it comes off before the bench crafts
     const meta = !!block?.tag && st.free(metaSide) > 0;
