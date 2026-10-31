@@ -115,7 +115,18 @@ These aren't in the game data. Each one is a named constant in `public/js/engine
 
 ### Not covered yet
 
-Harvest crafts other than reforges, Eldritch Annulment (not planned), beastcrafting, Aisling, and prices from poe.ninja.
+Harvest crafts other than reforges, Eldritch Annulment (not planned), and beastcrafting.
+
+## Prices
+
+`.github/workflows/prices.yml` runs `tools/fetch_prices.py` every hour (and on demand). It fetches currency, essence, fossil and resonator prices from poe.ninja for the current challenge league, sending a descriptive User-Agent, and commits `public/data/prices.json`. Users' browsers never call poe.ninja; the page only reads that static file. If it's missing, the page ranks by chance.
+
+With prices, every method shows its expected cost per finished item in Chaos and Divine Orbs, and the list is ranked by that cost (a toggle switches back to ranking by chance). Items with no price (Harvest lifeforce, Aisling, anything poe.ninja doesn't list) are shown as "unpriced", and those plans rank after fully priced ones.
+
+```bash
+python3 tools/fetch_prices.py public/data/prices.json                 # live (needs network access to poe.ninja)
+python3 tools/fetch_prices.py /tmp/p.json --fixtures test/fixtures    # offline, from saved responses
+```
 
 ## Tests
 

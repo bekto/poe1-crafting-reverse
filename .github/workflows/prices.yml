@@ -1,0 +1,36 @@
+name: Update prices
+
+# Fetches prices from poe.ninja into public/data/prices.json. Hourly at most, never from users' browsers.
+on:
+  schedule:
+    - cron: "17 * * * *"
+  workflow_dispatch:
+    inputs:
+      league:
+        description: "League name as poe.ninja spells it (empty = current challenge league)"
+        required: false
+
+permissions:
+  contents: write
+
+concurrency:
+  group: prices
+  cancel-in-progress: false
+
+jobs:
+  prices:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Fetch prices
+        run: python3 tools/fetch_prices.py public/data/prices.json ${{ github.event.inputs.league && format('--league "{0}"', github.event.inputs.league) || '' }}
+      - name: Commit if changed
+        run: |
+          git config user.name "prices-bot"
+          git config user.email "prices-bot@users.noreply.github.com"
+          git add public/data/prices.json
+          git diff --cached --quiet || git commit -m "Update prices from poe.ninja"
+          git push

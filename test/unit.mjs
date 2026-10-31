@@ -696,6 +696,36 @@ test("every planned method has at least one step after getting the base", async 
   }
 });
 
+// ------------------------------------------------------------------ prices
+test("prices: fetch script on saved poe.ninja responses, and cost per method", async () => {
+  const { execFileSync } = await import("node:child_process");
+  const os = await import("node:os");
+  const out = `${os.tmpdir()}/prices_unit_${process.pid}.json`;
+  execFileSync("python3", ["tools/fetch_prices.py", out, "--fixtures", "test/fixtures"], { cwd: new URL("..", import.meta.url).pathname });
+  const prices = JSON.parse(fs.readFileSync(out, "utf8"));
+  eq(prices.league, "Keepers", "first softcore challenge league from the index");
+  eq(prices.divine, 180);
+  eq(prices.prices["Chaos Orb"], 1);
+  ok(!("Broken Thing" in prices.prices), "lines without a price are skipped");
+  const { usageOf, priceUsage } = await import("../public/js/engine/cost.js");
+  const fakeCtx = { db, crafts: [], base: db.bases[0] };
+  deq(usageOf({ kind: "chaos", p: 0.25, currency: [["Chaos Orb", 1]] }, fakeCtx), { "Chaos Orb": 4 });
+  const pr = priceUsage({ "Chaos Orb": 4, "Exalted Orb": 2, "Mystery Orb": 1 }, prices);
+  eq(pr.chaos, 4 + 2 * 12.5);
+  near(pr.divine, 29 / 180, 1e-12);
+  deq(pr.unpriced, ["Mystery Orb"]);
+  const { planCraft } = await import("../public/js/engine/craft.js");
+  const { ITEMS } = await import("../public/js/samples.js");
+  const { item, ident } = parse(ITEMS.ring);
+  const want = ident.mods.filter((_, i) => [0, 3].includes(i)).map((m) => ({ mod: m.mod, minMod: m.mod }));
+  const plan = planCraft(db, item.base, item.ilvl, [], want, [], { refineMs: 0, prices });
+  const chaos = plan.methods.find((m) => m.kind === "chaos");
+  near(chaos.cost.chaos, 1 / chaos.p, 1e-9, "Chaos spam costs 1/p chaos");
+  const alt = plan.methods.find((m) => m.kind === "altregal" && !m.block);
+  ok(alt.cost.chaos > 0 && alt.cost.unpriced.length === 0, "alteration route fully priced by the fixture");
+  ok(plan.methods.filter((m) => m.kind === "harvest").every((m) => m.cost.unpriced.includes("Harvest lifeforce")));
+});
+
 // ------------------------------------------------------------------ runner
 export async function runAll() {
   for (const t of tests) {

@@ -45,13 +45,18 @@
     <h2><span class="num">3</span> How to craft it</h2>
     <div id="progress" class="progress" hidden><div class="bar"></div><span>Simulating crafts…</span></div>
     <div id="planSummary"></div>
+    <fieldset id="rankBox" class="rank" hidden>
+      <legend>Rank by</legend>
+      <label><input type="radio" name="rank" value="cost"> expected cost</label>
+      <label><input type="radio" name="rank" value="chance"> chance per try</label>
+    </fieldset>
     <div id="methods"></div>
   </section>
 
   <section class="panel notes">
     <h3>What this version covers</h3>
     <p>Chaos Orbs, essences (including corrupted-only ones), fossil combinations, Alteration → Regal → Exalted Orb, metacrafting (side locks, multimod, “Cannot roll Attack/Caster Modifiers”), Harvest reforges (approximate), influenced Exalted Orbs and the Awakener's Orb, Eldritch Chaos and Exalted Orbs, veiled mods (Veiled Chaos Orb, Aisling), recombinators (approximate), and bench crafts at the end. Odds use the game's real mod weights: exact for one or two wanted mods, simulated for more.</p>
-    <p><strong>Not yet included:</strong> other Harvest crafts, Eldritch Annulment, and beast imprints. Prices aren't included, so methods are ranked by chance per try, not by cost.</p>
+    <p><strong>Not yet included:</strong> other Harvest crafts, Eldritch Annulment, and beast imprints.</p>
     <p id="leagueNote"></p>
     <p class="fine">Fan-made tool. Not affiliated with or endorsed by Grinding Gear Games. Game data from the community RePoE project.</p>
   </section>

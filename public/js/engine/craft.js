@@ -9,6 +9,7 @@ import {
 import { buildSteps, pickBench } from "./steps.js";
 import { simulateAnnulRoute, ANNUL_LIMITS } from "./annul.js";
 import { stageOne } from "./stage1.js";
+import { usageOf, priceUsage } from "./cost.js";
 
 export { currencyName } from "./steps.js";
 
@@ -334,6 +335,7 @@ function altRegalResult(ctx, s1, r, exact, block) {
 /** Total cost in Chaos Orbs of {currency name: amount}, or null without a price for every item. */
 export function costOf(amounts, prices) {
   if (!amounts || !prices) return null;
+  prices = prices.prices || prices; // prices.json shape {divine, prices: {...}} or a plain {name: chaos}
   let c = 0;
   for (const [name, n] of Object.entries(amounts)) {
     if (!(n > 0)) continue;
@@ -643,7 +645,7 @@ function mergeCounts(list) {
 export function planCraft(db, base, ilvl, influences, wanted, fixed = [], opts = {}) {
   const trials = opts.trials || 20000;
   const noExact = opts.exact === false; // force Monte Carlo (used by the tests)
-  const prices = opts.prices || null; // {currency name: price in Chaos Orbs}
+  const prices = opts.prices || null; // prices.json: {divine, prices: {currency name: price in Chaos Orbs}}
   const ctx = buildContext(db, base, ilvl, influences, wanted, fixed, { noExact, prices, eldritch: opts.eldritch });
   const methods = [];
   methods.push(...rerollMethods(ctx, trials));
@@ -680,6 +682,8 @@ export function planCraft(db, base, ilvl, influences, wanted, fixed = [], opts =
   methods.sort((a, b) => b.p - a.p);
   for (const m of methods) {
     m.steps = buildSteps(m.ctx, m);
+    m.usage = usageOf(m, m.ctx);
+    m.cost = priceUsage(m.usage, prices);
     m.crafts = m.ctx.crafts.map((c) => ({ mod: c.wantedMod, option: c.option }));
     delete m.ctx; delete m.stage1Ctx; delete m.stage2Ctx; delete m.target; delete m.targets; delete m.A; delete m.B;
   }

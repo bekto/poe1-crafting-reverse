@@ -8,6 +8,9 @@ const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 
 let db = null;
+let prices = null; // public/data/prices.json, written by the hourly GitHub Action (optional)
+let lastPlan = null;
+let rankBy = localStorage.getItem("rankBy") || "cost";
 let current = null; // {item, rows:[{m, want, minModId, family}]}
 let worker = null;
 let reqId = 0;
@@ -22,6 +25,7 @@ async function init() {
       ? `League mechanic (${lg.league} ${lg.mechanic}): ${lg.crafts.length} craft${lg.crafts.length > 1 ? "s" : ""} included, approximate.`
       : `League mechanic (${lg.league} ${lg.mechanic}): not modelled yet; its crafting rules haven't been checked.`;
     $("readBtn").disabled = false;
+    loadPrices();
   } catch (e) {
     $("meta").textContent = "Couldn't load game data.";
     showMsg("parseMsg", "Couldn't load the game data file. Reload the page to try again.");
@@ -32,6 +36,18 @@ async function init() {
     worker.onmessage = (ev) => { const p = pending.get(ev.data.id); if (p) { pending.delete(ev.data.id); p(ev.data); } };
     worker.onerror = () => { worker = null; };
   } catch { worker = null; }
+}
+
+async function loadPrices() {
+  try {
+    const r = await fetch(new URL("prices.json", DATA_DIR));
+    if (!r.ok) throw new Error(r.status);
+    prices = await r.json();
+    $("meta").textContent += ` · prices: ${prices.league} (${prices.source}, ${prices.updated})`;
+  } catch {
+    prices = null;
+    $("meta").textContent += " · no price data";
+  }
 }
 
 function showMsg(id, html, cls = "") {
@@ -127,7 +143,7 @@ async function findPlans() {
   const fixedIds = rows.filter((r) => r.m.fractured).map((r) => r.m.mod.id);
   if (!wanted.length) { showMsg("unknownMsg", "Tick at least one mod you want.", "warn"); return; }
   const ilvl = Math.max(1, Math.min(100, parseInt($("ilvlInput").value, 10) || item.ilvl));
-  const req = { baseId: item.base.id, ilvl, influences: item.influences, wanted, fixedIds, trials: 20000, eldritch: item.eldritch ? { dominant: item.eldritch.dominant } : null };
+  const req = { baseId: item.base.id, ilvl, influences: item.influences, wanted, fixedIds, trials: 20000, prices, eldritch: item.eldritch ? { dominant: item.eldritch.dominant } : null };
   $("resultPanel").hidden = false;
   $("progress").hidden = false;
   $("methods").innerHTML = "";
@@ -181,11 +197,42 @@ function renderPlan(plan, ilvl) {
   if (unveiled.length) parts.push(`${unveiled.map((m) => `“${esc(m.x)}”`).join(", ")} is an unveiled mod: only the Veiled Chaos Orb and Aisling plans (or a bench craft, if you have unlocked it) can give it.`);
   if (normal.length) parts.push(`${normal.map((m) => `“${esc(m.x)}”`).join(", ")} can't roll naturally on this base at item level ${ilvl}; only an essence (or a higher item level) can give it.`);
   if (ilvl < plan.minIlvl) parts.push(`Your item level (${ilvl}) is below ${plan.minIlvl}, which the chosen tiers need.`);
-  parts.push(`Ranked by chance per try (two-stage methods by total tries). A method with lower odds can still be cheaper if its currency is cheap — for example Alterations versus Deafening Essences, or a metacraft that costs Divine Orbs on every try.`);
+  parts.push(prices
+    ? `Costs use ${esc(prices.league)} prices from ${esc(prices.source)} (${esc(prices.updated)}). Items without a price (Harvest lifeforce, Aisling, some fossils) are listed as unpriced, and those plans rank after fully priced ones.`
+    : `There's no price data, so methods are ranked by chance per try (two-stage methods by total tries). A method with lower odds can still be cheaper if its currency is cheap.`);
   $("planSummary").innerHTML = `<p class="summary">${parts.join(" ")}</p>`;
+  lastPlan = plan;
+  $("rankBox").hidden = !prices;
+  drawMethods();
+}
+
+function ranked(methods) {
+  const list = [...methods];
+  if (rankBy !== "cost" || !prices) return list.sort((a, b) => b.p - a.p);
+  const key = (m) => (!m.cost || !(m.p > 0) ? [3, -m.p] : m.cost.unpriced.length ? [m.cost.chaos > 0 ? 1 : 2, m.cost.chaos] : [0, m.cost.chaos]);
+  return list.sort((a, b) => { const ka = key(a), kb = key(b); return ka[0] - kb[0] || ka[1] - kb[1]; });
+}
+
+function costText(m) {
+  if (!m.cost || !(m.p > 0)) return "";
+  const c = m.cost;
+  const main = c.chaos > 0 ? `≈ ${fmtNum(c.chaos)} chaos${c.divine !== null ? ` (${fmtNum(c.divine)} div)` : ""}` : "";
+  const un = c.unpriced.length ? `${main ? " + " : ""}unpriced: ${c.unpriced.map(esc).join(", ")}` : "";
+  return `<small class="cost">${main}${un}</small>`;
+}
+
+function fmtNum(n) {
+  if (n >= 100) return Math.round(n).toLocaleString();
+  if (n >= 10) return n.toFixed(1);
+  return n.toFixed(2);
+}
+
+function drawMethods() {
+  const plan = lastPlan;
+  if (!plan) return;
   const box = $("methods");
   box.innerHTML = "";
-  plan.methods.forEach((m, i) => {
+  ranked(plan.methods).forEach((m, i) => {
     const d = document.createElement("details");
     const realistic = m.p > 0 && m.p >= 1e-5;
     d.className = "method" + (i === 0 && m.p > 0 ? " best" : "") + (realistic ? "" : " unlikely");
@@ -212,17 +259,21 @@ function renderPlan(plan, ilvl) {
       lock: m.eldritch ? "Two stages · Eldritch Chaos rerolls one side" : m.harvestKeep ? "Two stages · Harvest rerolls one side" : "Metacraft · two stages, each stage-2 try needs a new lock craft",
     }[m.kind] + (m.multimod ? " · multimod" : "") + (m.approximate ? (m.kind === "recomb" ? " · approximate" : " · Harvest data is hand-written") : "");
     d.innerHTML = `
-      <summary><span class="mname">${esc(m.name)}<span class="kind">${kind}${m.corrupt ? " · corrupted essence" : ""}</span></span><span class="odds">${odds}</span></summary>
+      <summary><span class="mname">${esc(m.name)}<span class="kind">${kind}${m.corrupt ? " · corrupted essence" : ""}</span></span><span class="odds">${odds}${costText(m)}</span></summary>
       <ol class="steps">${m.steps.map((s) => `<li><b>${esc(s.title)}</b><span>${esc(s.detail)}</span></li>`).join("")}</ol>`;
     box.appendChild(d);
   });
   if (!plan.methods.some((m) => m.p > 0)) {
-    box.insertAdjacentHTML("afterbegin", `<div class="msg warn">None of the covered methods can realistically make this exact item. Try relaxing tiers or unticking a mod. Items like this are usually made with Harvest, Eldritch or metacrafting, which are coming in a later version.</div>`);
+    box.insertAdjacentHTML("afterbegin", `<div class="msg warn">None of the covered methods can realistically make this exact item. Try relaxing tiers or unticking a mod.</div>`);
   }
 }
 
 for (const key of Object.keys(ITEMS)) $("sampleSel").add(new Option(LABELS[key] || key, key));
 $("readBtn").addEventListener("click", readItem);
+for (const r of document.querySelectorAll('input[name="rank"]')) {
+  r.checked = r.value === rankBy;
+  r.addEventListener("change", () => { rankBy = r.value; localStorage.setItem("rankBy", rankBy); drawMethods(); });
+}
 $("planBtn").addEventListener("click", findPlans);
 $("sampleSel").addEventListener("change", (e) => {
   if (!e.target.value) return;

@@ -35,7 +35,8 @@ Work top to bottom. Each item is done when its acceptance check passes, the test
   - Notes: `league.json` and a planner hook (tagReforge / keepSide crafts reuse the reforge engine, unit-tested with an injected craft). No 3.29 crafts are listed, because the rules couldn't be verified from here; the page says "not modelled yet". Fill it in for 3.30.
 
 ## Phase 3: cost and usability
-- [ ] **Prices.** A GitHub Action fetches poe.ninja hourly into `public/data/prices.json`. Show expected cost in Chaos and Divine Orbs per method, and rank by expected cost (keep "rank by chance" as a toggle).
+- [x] **Prices.** A GitHub Action fetches poe.ninja hourly into `public/data/prices.json`. Show expected cost in Chaos and Divine Orbs per method, and rank by expected cost (keep "rank by chance" as a toggle).
+  - Notes: `tools/fetch_prices.py` + `.github/workflows/prices.yml` (hourly, descriptive UA), tested on saved responses in `test/fixtures/`; `engine/cost.js` gives each method's expected currency use; the UI shows chaos/divine and a rank toggle. poe.ninja isn't reachable from this environment, so no live prices.json is committed (the Action creates it).
 - [ ] **Manual item builder.** Pick a base, an item level and mods from searchable lists, for when you have no item text.
 - [ ] **Shareable links.** Encode the base, item level and targets in `location.hash` (a plain `#` name format that the host allows; see the README).
 - [ ] **Mobile layout pass and accessibility check** (keyboard navigation, labels, contrast).

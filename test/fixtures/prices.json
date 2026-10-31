@@ -1,0 +1,22 @@
+{
+ "league": "Keepers",
+ "source": "poe.ninja",
+ "updated": "fixture",
+ "divine": 180.0,
+ "prices": {
+  "Chaos Orb": 1.0,
+  "Deafening Essence of Greed": 3.0,
+  "Divine Orb": 180.0,
+  "Exalted Orb": 12.5,
+  "Frigid Fossil": 1.0,
+  "Orb of Alteration": 0.12,
+  "Orb of Annulment": 4.0,
+  "Orb of Augmentation": 0.05,
+  "Potent Chaotic Resonator": 1.5,
+  "Primitive Chaotic Resonator": 0.5,
+  "Pristine Fossil": 2.0,
+  "Regal Orb": 0.4,
+  "Shrieking Essence of Spite": 1.2,
+  "Veiled Chaos Orb": 5.0
+ }
+}
