@@ -50,6 +50,8 @@ jobs:
         with:
           ref: main
       - uses: actions/configure-pages@v5
+        with:
+          enablement: true  # switches Pages on (source: GitHub Actions) if it isn't yet
       - uses: actions/upload-pages-artifact@v3
         with:
           path: public
