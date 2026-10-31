@@ -1,18 +1,18 @@
 // Runs the crafting simulations off the main thread so the page stays responsive.
-import { indexData } from "./engine/data.js";
+import { loadDb } from "./engine/data.js";
 import { runPlan } from "./engine/run.js";
 
 let db = null;
 
-async function ensureDb(url) {
-  if (!db) db = indexData(await (await fetch(url)).json());
+async function ensureDb(dir) {
+  if (!db) db = await loadDb(async (path) => (await fetch(new URL(path, dir))).json());
   return db;
 }
 
 self.onmessage = async (ev) => {
-  const { id, dataUrl, req } = ev.data;
+  const { id, dataDir, req } = ev.data;
   try {
-    const d = await ensureDb(dataUrl);
+    const d = await ensureDb(dataDir);
     const plan = runPlan(d, req);
     self.postMessage({ id, ok: true, plan });
   } catch (e) {

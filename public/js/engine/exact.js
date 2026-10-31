@@ -288,6 +288,42 @@ export function exactReroll(ctx, entries, forced) {
   return { p: Math.min(1, p) };
 }
 
+/**
+ * Exact odds of a reroll whose first mod is drawn only from `first` (entries of the pool), as Harvest's
+ * "including a <tag> modifier" does. Mixes exactReroll over every possible first mod; first mods that leave the
+ * rest of the roll in the same situation (same side and group weight, no role) are grouped into one case.
+ */
+export function exactRerollFirstFrom(ctx, entries, first, forced) {
+  if (ctx.hard.length > MAX_EXACT_TARGETS) return null;
+  const model = buildUnits(ctx, entries);
+  if (!model) return null;
+  const roleUnits = new Set([...model.targetUnit, ...model.craftUnit].filter(Boolean));
+  const cases = new Map();
+  let total = 0;
+  const caps = { ...(ctx.caps || maxAffixes(ctx.base)) };
+  for (const m of forced) caps[m.g]--;
+  const taken = new Set(forced.flatMap((m) => m.gr));
+  for (const e of first) {
+    if (!(e.w > 0) || caps[e.mod.g] <= 0 || e.mod.gr.some((g) => taken.has(g))) continue;
+    const u = model.units.get(e.mod.gr[0]);
+    if (!u) continue;
+    const key = roleUnits.has(u)
+      ? `r:${u.g}:${ctx.hard.map((t) => +satisfies(e.mod, t)).join("")}:${(ctx.crafts || []).map((c) => +satisfies(e.mod, c)).join("")}`
+      : `o:${u.side}:${u.w.toPrecision(12)}`;
+    if (!cases.has(key)) cases.set(key, { mod: e.mod, w: 0 });
+    cases.get(key).w += e.w;
+    total += e.w;
+  }
+  if (!(total > 0)) return exactReroll(ctx, entries, forced);
+  let p = 0;
+  for (const c of cases.values()) {
+    const r = exactReroll(ctx, entries, [...forced, c.mod]);
+    if (!r) return null;
+    p += (c.w / total) * r.p;
+  }
+  return { p };
+}
+
 // ------------------------------------------------------------------ alteration route
 
 /**

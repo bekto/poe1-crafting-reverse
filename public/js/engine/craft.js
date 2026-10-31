@@ -1,7 +1,7 @@
 // Reverse-crafting planner for PoE 1: builds the targets, tries every covered method, and ranks them.
 import { basePool, itemTags, spawnWeight, maxAffixes, satisfies, makeTarget, benchOptionsFor, craftReserve } from "./pool.js";
 import { MAGIC_TWO_MOD_CHANCE, rareModCounts, LOCKED_REROLL_MIN_NEW } from "./assumptions.js";
-import { exactReroll, exactAltRegal } from "./exact.js";
+import { exactReroll, exactAltRegal, exactRerollFirstFrom } from "./exact.js";
 import {
   mulberry32, CompiledPool, State, addRandom, success, blockedCrafts, fixedInfo, simulateReroll,
   stats, exactStats, targetMask, BLOCK_BITS,
@@ -176,8 +176,37 @@ export function resonatorName(n) {
   return ["", "Primitive Chaotic Resonator", "Potent Chaotic Resonator", "Powerful Chaotic Resonator", "Prime Chaotic Resonator"][n];
 }
 
+/**
+ * Harvest "Reforge a Rare item with new random modifiers, including a <tag> modifier": the first mod has the tag,
+ * and the tag's mods are more common for the rest (data/manual/harvest.json). Only tags a wanted mod has.
+ */
+function harvestTagMethods(ctx, trials) {
+  const h = ctx.db.manual?.harvest;
+  if (!h) return [];
+  const wantedTags = new Set([...ctx.hard, ...ctx.crafts].flatMap((t) => t.mod.t));
+  const out = [];
+  let seed = 300;
+  for (const r of h.reforgeTag) {
+    if (!wantedTags.has(r.tag)) continue;
+    const entries = ctx.pool.map((e) => ({ mod: e.mod, w: e.mod.t.includes(r.tag) ? e.w * h.moreCommonMultiplier : e.w }));
+    const first = entries.filter((e) => e.mod.t.includes(r.tag));
+    if (!first.length) continue;
+    const name = `Harvest: reforge including a ${r.name} modifier`;
+    const base = { kind: "harvest", name, harvest: r, approximate: !!h.approximate, text: h.reforgeTagText.replaceAll("{name}", r.name), currency: [["Harvest lifeforce", r.cost]] };
+    const fixed = ctx.fixedEntries.map((e) => e.mod);
+    const ex = ctx.noExact ? null : exactRerollFirstFrom(ctx, entries, first, fixed);
+    if (ex) { out.push({ ...base, ...exactStats(ex.p) }); continue; }
+    const P = new CompiledPool(ctx, entries);
+    const only = Uint8Array.from(entries.map((e) => (e.mod.t.includes(r.tag) ? 1 : 0)));
+    const run = (n, sd) => simulateReroll(ctx, P, [], n, sd, only);
+    out.push({ ...base, rerun: run, ...stats(run(trials, seed), trials) });
+    seed++;
+  }
+  return out;
+}
+
 function rerollMethods(ctx, trials) {
-  return [chaosMethod(ctx, trials), ...essenceMethods(ctx, trials), ...fossilMethods(ctx, Math.floor(trials / 2))];
+  return [chaosMethod(ctx, trials), ...essenceMethods(ctx, trials), ...fossilMethods(ctx, Math.floor(trials / 2)), ...harvestTagMethods(ctx, trials)];
 }
 
 // ---------------------------------------------------------------- alteration route
@@ -291,31 +320,36 @@ function blockVariants(ctx) {
   return out;
 }
 
-// ---------------------------------------------------------------- side lock: "Prefixes/Suffixes Cannot Be Changed" + Chaos
+// ---------------------------------------------------------------- side lock: bench lock + Chaos, or Harvest keep-side reforge
 
 /**
- * Two stages: first roll the wanted mods of one side with the best reroll method (leaving room for the lock
- * craft), then craft the lock and Chaos Orb until the other side is right. The Chaos Orb keeps the locked side
- * and removes the lock craft, so each try needs a new lock craft.
+ * Two stages: first roll the wanted mods of one side with the best reroll method, then reroll only the other side
+ * until it's right: with the bench lock craft + Chaos Orb (the Chaos Orb keeps the locked side and removes the lock
+ * craft, so each try needs a new one, and stage 1 must leave a slot for it), or with Harvest's
+ * "Reforge a Rare item, keeping all Prefixes/Suffixes".
  */
-function lockMethods(ctx, trials, wanted, fixed) {
+function lockMethods(ctx, trials, wanted) {
   const out = [];
   const db = ctx.db;
-  for (const [L, key] of [["p", "lockPrefixes"], ["s", "lockSuffixes"]]) {
-    const meta = db.meta?.[key];
-    if (!meta) continue;
+  const h = db.manual?.harvest;
+  const lockers = [
+    ...[["p", "lockPrefixes"], ["s", "lockSuffixes"]].filter(([, k]) => db.meta?.[k]).map(([L, k]) => ({ L, meta: db.meta[k] })),
+    ...(h?.reforgeKeep || []).map((k) => ({ L: k.keep, harvest: k, approximate: !!h.approximate })),
+  ];
+  for (const lk of lockers) {
+    const { L, meta } = lk;
     const O = L === "p" ? "s" : "p";
     const onL = ctx.hard.filter((t) => t.side === L), onO = ctx.hard.filter((t) => t.side === O);
     if (!onL.length || !onO.length || ctx.fixedEntries.length) continue;
     const pick = (list) => wanted.filter((w) => list.some((t) => t.wantedMod === w.mod));
     const craftL = ctx.crafts.filter((c) => c.side === L), craftO = ctx.crafts.filter((c) => c.side === O);
-    // stage 1: wanted mods (and bench crafts) of side L, plus a free slot for the lock craft
+    // stage 1: wanted mods (and bench crafts) of side L, plus a free slot for a lock craft
     const reserve = { p: 0, s: 0 };
-    reserve[meta.mod.g]++;
+    if (meta) reserve[meta.mod.g]++;
     const ctx1 = buildContext(db, ctx.base, ctx.ilvl, ctx.influences, pick(onL).concat(pickCrafts(wanted, craftL)), [], { reserve, noExact: ctx.noExact, craftMods: craftL.map((c) => c.wantedMod) });
     const stage1 = rerollMethods(ctx1, Math.floor(trials / 2)).filter((m) => m.p > 0).sort((a, b) => b.p - a.p)[0];
     if (!stage1) continue;
-    // stage 2: Chaos keeps side L; new mods only on side O. Assume side L is full apart from slots kept for crafts.
+    // stage 2: keeps side L; new mods only on side O. Assume side L is full apart from slots kept for crafts.
     const keptL = ctx.caps[L] - craftL.length;
     const caps = { [L]: 0, [O]: ctx.caps[O] };
     const counts = mergeCounts(ctx.counts.map(([n, p]) => [Math.min(caps[O], Math.max(LOCKED_REROLL_MIN_NEW, n - keptL)), p]));
@@ -326,10 +360,12 @@ function lockMethods(ctx, trials, wanted, fixed) {
     delete r2.rerun;
     const p1 = stage1.p, p2 = r2.p;
     const tries = p1 > 0 && p2 > 0 ? 1 / p1 + 1 / p2 : null;
+    const second = meta ? `"${meta.mod.x}" + Chaos Orb` : `Harvest "${lk.harvest.text}"`;
     out.push({
       kind: "lock",
-      name: `${stage1.name}, then "${meta.mod.x}" + Chaos Orb`,
-      lockSide: L, meta, stage1, stage1Ctx: ctx1, stage2Ctx: ctx2,
+      name: `${stage1.name}, then ${second}`,
+      lockSide: L, meta, harvestKeep: lk.harvest || null, stage1, stage1Ctx: ctx1, stage2Ctx: ctx2,
+      approximate: !!(lk.approximate || stage1.approximate),
       p1, p2, keptL,
       exact: !!(stage1.exact && r2.exact),
       hits: stage1.exact && r2.exact ? null : Math.min(stage1.hits ?? Infinity, r2.hits ?? Infinity),
@@ -338,7 +374,7 @@ function lockMethods(ctx, trials, wanted, fixed) {
       expected: tries,
       n90: null,
       upperBound: tries ? null : 3 / trials,
-      currency: [...stage1.currency, ["Chaos Orb", 1]],
+      currency: [...stage1.currency, meta ? ["Chaos Orb", 1] : ["Harvest lifeforce", lk.harvest.cost]],
     });
   }
   return out;
@@ -367,7 +403,7 @@ export function planCraft(db, base, ilvl, influences, wanted, fixed = [], opts =
     const m = altRegalMethod(ctx, Math.floor(trials / 2), b);
     if (m && ar && m.p > ar.p) methods.push(m);
   }
-  methods.push(...lockMethods(ctx, trials, wanted, fixed));
+  methods.push(...lockMethods(ctx, trials, wanted));
   for (const m of methods) m.ctx = ctx;
 
   // with two or more bench-able mods: the same methods with multimod and two bench crafts

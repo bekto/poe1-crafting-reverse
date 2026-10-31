@@ -75,19 +75,20 @@ export class State {
 }
 
 /** Adds one random mod (reroll / regal / exalt). block: mods with these BLOCK_BITS can't be picked. */
-export function addRandom(P, st, rng, block = 0) {
+export function addRandom(P, st, rng, block = 0, only = null) {
   const pOpen = st.nP < st.max.p, sOpen = st.nS < st.max.s;
   const stamp = st.stamp, removed = P.removed, side = P.side, w = P.w, bits = P.blockBits;
+  const skip = (i) => removed[i] === stamp || (block && bits[i] & block) || (only && !only[i]);
   let total;
-  if (!block) total = (pOpen ? Math.max(0, st.tot[0]) : 0) + (sOpen ? Math.max(0, st.tot[1]) : 0);
+  if (!block && !only) total = (pOpen ? Math.max(0, st.tot[0]) : 0) + (sOpen ? Math.max(0, st.tot[1]) : 0);
   else {
     total = 0;
-    for (let i = 0; i < P.n; i++) if (removed[i] !== stamp && !(bits[i] & block) && (side[i] === 0 ? pOpen : sOpen)) total += w[i];
+    for (let i = 0; i < P.n; i++) if (!skip(i) && (side[i] === 0 ? pOpen : sOpen)) total += w[i];
   }
   if (total <= 1e-9) return false;
   let r = rng() * total;
   for (let i = 0; i < P.n; i++) {
-    if (removed[i] === stamp || (block && bits[i] & block)) continue;
+    if (skip(i)) continue;
     const sd = side[i];
     if (sd === 0 ? !pOpen : !sOpen) continue;
     r -= w[i];
@@ -117,8 +118,11 @@ export function fixedInfo(ctx, mod) {
   return { side: mod.g === "p" ? 0 : 1, groups: mod.gr.map(ctx.gid), mask: targetMask(mod, ctx.hard), craftMask: targetMask(mod, ctx.crafts) };
 }
 
-/** Simulates repeated full rerolls (chaos, essence, fossil). forced = mods always added first. */
-export function simulateReroll(ctx, P, forced, trials, seed) {
+/**
+ * Simulates repeated full rerolls (chaos, essence, fossil, Harvest). forced = mods always added first;
+ * firstOnly (per pool entry) = the first rolled mod comes from these entries (a Harvest "including a ... modifier").
+ */
+export function simulateReroll(ctx, P, forced, trials, seed, firstOnly = null) {
   const rng = mulberry32(seed);
   const st = new State(ctx.groupIndex.size + 8);
   st.bind(P);
@@ -128,6 +132,7 @@ export function simulateReroll(ctx, P, forced, trials, seed) {
     st.reset(ctx.caps);
     for (const f of forcedInfo) st.add(f.side, f.groups, f.mask, f.craftMask);
     const n = pickCount(ctx.counts, rng);
+    if (firstOnly && st.count < n) addRandom(P, st, rng, 0, firstOnly);
     while (st.count < n) if (!addRandom(P, st, rng)) break;
     if (success(ctx, P, st)) hits++;
   }

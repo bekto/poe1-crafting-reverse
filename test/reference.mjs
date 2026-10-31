@@ -8,7 +8,7 @@ import assert from "node:assert/strict";
 import { indexData } from "../public/js/engine/data.js";
 import { planCraft, buildContext, stageOneTargets } from "../public/js/engine/craft.js";
 export { stageOneTargets };
-import { exactReroll, exactAltRegal } from "../public/js/engine/exact.js";
+import { exactReroll, exactAltRegal, exactRerollFirstFrom } from "../public/js/engine/exact.js";
 import { RARE_COUNTS } from "../public/js/engine/assumptions.js";
 import { satisfies } from "../public/js/engine/pool.js";
 
@@ -86,13 +86,14 @@ function craftsOk(ctx, taken, caps, ignoreBlocked = false) {
  * Brute force: walks every possible sequence of rolled mods with the same rules as the simulator
  * (forced mods first, then mods by weight without repeating a group, until the item has n mods).
  */
-export function bruteReroll(ctx, entries, forced, counts, caps = { p: 3, s: 3 }) {
+export function bruteReroll(ctx, entries, forced, counts, caps = { p: 3, s: 3 }, firstTag = null) {
   const ok = (taken) => ctx.hard.every((t) => taken.some((m) => satisfies(m, t))) && craftsOk(ctx, taken, caps).ok;
   const rec = (taken, n) => {
     if (taken.length >= n) return ok(taken) ? 1 : 0;
     const groups = new Set(taken.flatMap((m) => m.gr));
     const open = (side) => taken.filter((m) => m.g === side).length < caps[side];
-    const avail = entries.filter((e) => e.w > 0 && open(e.mod.g) && !e.mod.gr.some((g) => groups.has(g)));
+    const isFirst = firstTag && taken.length === forced.length;
+    const avail = entries.filter((e) => e.w > 0 && open(e.mod.g) && !e.mod.gr.some((g) => groups.has(g)) && !(isFirst && !e.mod.t.includes(firstTag)));
     const tot = avail.reduce((a, e) => a + e.w, 0);
     if (!tot) return ok(taken) ? 1 : 0;
     return avail.reduce((a, e) => a + (e.w / tot) * rec([...taken, e.mod], n), 0);
@@ -248,6 +249,14 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     const s1 = stageOneTargets(ctx);
     const ea = exactAltRegal(ctx, s1), ba = bruteAltRegal(ctx, s1);
     report(["p1", "p2", "avgExalts"].every((k) => relErr(ea[k], ba[k]) <= EXACT_TOLERANCE), `alteration route with multimod ${ids.join(" + ")}: p2 ${ea.p2.toPrecision(6)} vs ${ba.p2.toPrecision(6)}`);
+  }
+  // Harvest-style reforge: the first mod has the "attack" tag, and attack mods are 10x more common
+  for (const ids of [["P2t2", "S1t2"], ["S3t2", "P1t1"], ["P3t2", "S2t1"]]) {
+    const ctx = richContext(rich, ids);
+    const entries = ctx.pool.map((e) => ({ mod: e.mod, w: e.mod.t.includes("attack") ? e.w * 10 : e.w }));
+    const first = entries.filter((e) => e.mod.t.includes("attack"));
+    const ex = exactRerollFirstFrom(ctx, entries, first, []).p, bf = bruteReroll(ctx, entries, [], RARE_COUNTS, { p: 3, s: 3 }, "attack");
+    report(relErr(ex, bf) <= EXACT_TOLERANCE, `reroll including an attack mod ${ids.join(" + ")}: ${ex.toPrecision(8)} vs ${bf.toPrecision(8)}`);
   }
   for (const ids of [["P1t2", "P3t2"], ["S1t2", "P3t2", "S2t1"], ["P1t2", "S1t1"]]) {
     const ctx = richContext(rich, ids);

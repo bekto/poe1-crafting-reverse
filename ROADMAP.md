@@ -17,7 +17,8 @@ Work top to bottom. Each item is done when its acceptance check passes, the test
 ## Phase 2: more crafting methods
 - [x] **Multimod and metacrafting.** Add "Can have up to 3 Crafted Modifiers" (it uses a suffix), "Prefixes/Suffixes Cannot Be Changed" plus Scour or Chaos, and "Cannot Roll Attack/Caster Mods" with Exalts. Put bench costs in steps from `bench` data.
   - Notes: up to 2 bench crafts + multimod (exact and simulated), side lock + Chaos as a two-stage method, attack/caster block for the exalt stage; engine split into sim.js / craft.js / steps.js; meta crafts found by mod group in `db.meta`. 33 reference checks.
-- [ ] **Harvest reforges.** Add "Reforge with a guaranteed X modifier" for each tag and "Reforge keeping prefixes/suffixes". This data isn't in RePoE, so write `public/data/manual/harvest.json` with sources. Mark it as approximate in the UI.
+- [x] **Harvest reforges.** Add "Reforge with a guaranteed X modifier" for each tag and "Reforge keeping prefixes/suffixes". This data isn't in RePoE, so write `public/data/manual/harvest.json` with sources. Mark it as approximate in the UI.
+  - Notes: 12 tag reforges (exact via a mixture over the guaranteed first mod, brute-force checked) and keep-prefixes/suffixes as a stage-2 option; `loadDb` loads `data/manual/*.json`. The wiki wasn't reachable, so costs are null and the multiplier is an assumption (DECISIONS).
 - [ ] **Annulment-aware alteration route.** When an exalt misses, compare annulling with starting over, and report the cheaper choice.
 - [ ] **Awakener's Orb and Conqueror's Exalts.** Plan for items with two influences, or mods that need an influence.
 - [ ] **Eldritch currency.** Eldritch implicits (Exarch/Eater), Eldritch Chaos, Exalted and Annulment orbs (prefix/suffix by dominance), and Orbs of Conflict. Requires parsing eldritch implicits.

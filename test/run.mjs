@@ -2,7 +2,7 @@ import fs from "node:fs";
 import { indexData } from "../public/js/engine/data.js";
 import { parseItemText, identifyMods } from "../public/js/engine/parse.js";
 import { ITEMS } from "./items.js";
-const db = indexData(JSON.parse(fs.readFileSync(new URL("../public/data/poe1.json", import.meta.url))));
+import { db } from "./db.mjs";
 const bad = [];
 for (const [k, t] of Object.entries(ITEMS)) {
   const it = parseItemText(db, t);

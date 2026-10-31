@@ -3,7 +3,7 @@ import { indexData } from "../public/js/engine/data.js";
 import { parseItemText, identifyMods } from "../public/js/engine/parse.js";
 import { planCraft } from "../public/js/engine/craft.js";
 import { ITEMS } from "./items.js";
-const db = indexData(JSON.parse(fs.readFileSync(new URL("../public/data/poe1.json", import.meta.url))));
+import { db } from "./db.mjs";
 const key = process.argv[2] || "ring";
 const pickIdx = process.argv[3] ? process.argv[3].split(",").map(Number) : null;
 const it = parseItemText(db, ITEMS[key]);

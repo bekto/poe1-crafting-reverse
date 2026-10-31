@@ -39,6 +39,10 @@ export function fmtN(n) {
   return (n / 1e6).toFixed(1) + "M";
 }
 
+function fmtLifeforce(cost) {
+  return Object.entries(cost).map(([k, v]) => `${v} ${k}`).join(", ");
+}
+
 const one = (x) => x.replace(/\n/g, " / ");
 const sideName = (g) => (g === "p" ? "prefix" : "suffix");
 
@@ -53,6 +57,9 @@ function rerollSteps(ctx, m, odds = oddsText(m)) {
   if (m.kind === "chaos") return [{ title: "Make it rare (Orb of Alchemy), then spam Chaos Orbs", detail: `Stop when the item has ${targetList(ctx)}. ${odds}` }];
   if (m.kind === "essence") {
     return [{ title: `Spam ${m.name}`, detail: `Every essence guarantees "${one(m.essenceMod.x)}" and rerolls the rest. Stop when it also has ${targetList(ctx, m.essenceMod)}. ${odds}${m.corrupt ? " This essence only comes from corrupting another essence with a Remnant of Corruption." : ""} Use an Orb of Scouring first if the item isn't normal or rare.` }];
+  }
+  if (m.kind === "harvest") {
+    return [{ title: `Horticrafting Station: "${m.text}"`, detail: `Repeat until the item has ${targetList(ctx)}. ${odds} Harvest odds are approximate: the game doesn't publish how much more common the ${m.harvest.name} mods get (assumed ×${ctx.db.manual.harvest.moreCommonMultiplier}). Lifeforce cost: ${m.harvest.cost ? fmtLifeforce(m.harvest.cost) : "see the Horticrafting Station"}.` }];
   }
   if (m.kind === "fossil") {
     return [{ title: `Fossil craft: ${m.name} in a ${resonatorName(m.fossils.length)}`, detail: `Effects: ${m.fossils.flatMap((f) => f.desc).join("; ")}. Keep rerolling until the item has ${targetList(ctx)}. ${odds}` }];
@@ -88,12 +95,20 @@ export function buildSteps(ctx, m) {
     const L = sideName(m.lockSide);
     const s1 = rerollSteps(m.stage1Ctx, m.stage1, `${pct(m.stage1.p)} per try (about ${fmtN(1 / m.stage1.p)} tries).`);
     s1[0].title = `Stage 1 — ${s1[0].title}`;
-    s1[0].detail += ` The other side doesn't matter yet, but leave a free ${sideName(m.meta.mod.g)} for the lock craft.`;
+    s1[0].detail += m.meta ? ` The other side doesn't matter yet, but leave a free ${sideName(m.meta.mod.g)} for the lock craft.` : " The other side doesn't matter yet.";
     steps.push(...s1);
-    steps.push({
-      title: `Stage 2 — bench craft "${m.meta.mod.x}", then a Chaos Orb; repeat`,
-      detail: `The craft costs ${fmtCost(m.meta.cost)}. The Chaos Orb keeps every ${L} and rerolls the rest (removing the craft too, so craft it again before each Chaos Orb). Stop when the item has ${targetList(m.stage2Ctx)}. ${pct(m.p2)} per try (about ${fmtN(1 / m.p2)} tries). Assumes the ${L}es fill the item apart from slots kept for bench crafts (${m.keptL} kept).`,
-    });
+    const assume = `Assumes the ${L}es fill the item apart from slots kept for bench crafts (${m.keptL} kept).`;
+    if (m.meta) {
+      steps.push({
+        title: `Stage 2 — bench craft "${m.meta.mod.x}", then a Chaos Orb; repeat`,
+        detail: `The craft costs ${fmtCost(m.meta.cost)}. The Chaos Orb keeps every ${L} and rerolls the rest (removing the craft too, so craft it again before each Chaos Orb). Stop when the item has ${targetList(m.stage2Ctx)}. ${pct(m.p2)} per try (about ${fmtN(1 / m.p2)} tries). ${assume}`,
+      });
+    } else {
+      steps.push({
+        title: `Stage 2 — Horticrafting Station: "${m.harvestKeep.text}"; repeat`,
+        detail: `Keeps every ${L} and rerolls the rest. Stop when the item has ${targetList(m.stage2Ctx)}. ${pct(m.p2)} per try (about ${fmtN(1 / m.p2)} tries). ${assume} Harvest odds are approximate. Lifeforce cost: ${m.harvestKeep.cost ? fmtLifeforce(m.harvestKeep.cost) : "see the Horticrafting Station"}.`,
+      });
+    }
   }
   const crafts = ctx.crafts;
   if (crafts.length > 1 && ctx.db.meta?.multimod) {

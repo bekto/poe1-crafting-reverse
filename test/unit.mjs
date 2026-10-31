@@ -5,7 +5,7 @@ import { indexData, compileTemplate, matchLine } from "../public/js/engine/data.
 import { parseItemText, identifyMods } from "../public/js/engine/parse.js";
 import { tierTables, satisfies, makeTarget, benchOptionsFor, basePool, spawnWeight, itemTags, firstWeight } from "../public/js/engine/pool.js";
 
-const db = indexData(JSON.parse(fs.readFileSync(new URL("../public/data/poe1.json", import.meta.url))));
+import { db } from "./db.mjs";
 
 let assertions = 0, failed = 0;
 const tests = [];
@@ -490,7 +490,25 @@ test("planner offers multimod, lock and block variants on real items", async () 
   const lock = planCraft(db, item.base, item.ilvl, [], want([0, 3]), [], { refineMs: 0 }).methods.filter((m) => m.kind === "lock");
   ok(lock.length > 0, "lock method for a prefix + a suffix");
   ok(lock.every((m) => m.p > 0 && m.p <= Math.min(m.p1, m.p2)), "total tries = stage 1 + stage 2");
-  ok(lock[0].steps.some((s) => /Cannot Be Changed/.test(s.title)));
+  ok(lock.some((m) => m.steps.some((s) => /Cannot Be Changed/.test(s.title))));
+});
+
+// ------------------------------------------------------------------ Harvest
+test("Harvest data is loaded from data/manual and its plans are marked approximate", async () => {
+  const h = db.manual.harvest;
+  ok(h && h.reforgeTag.length >= 10, "tag reforges listed");
+  ok(h.reforgeKeep.some((k) => k.keep === "p") && h.reforgeKeep.some((k) => k.keep === "s"));
+  ok(h.reforgeTag.every((r) => db.mods.some((m) => m.t.includes(r.tag))), "every Harvest tag exists on some mod");
+  const { planCraft } = await import("../public/js/engine/craft.js");
+  const { ITEMS } = await import("../public/js/samples.js");
+  const { item, ident } = parse(ITEMS.ring);
+  const want = ident.mods.filter((_, i) => [0, 3].includes(i)).map((m) => ({ mod: m.mod, minMod: m.mod }));
+  const plan = planCraft(db, item.base, item.ilvl, [], want, [], { refineMs: 0 });
+  const hv = plan.methods.filter((m) => m.kind === "harvest");
+  ok(hv.some((m) => /Life/.test(m.name)) && hv.some((m) => /Cold/.test(m.name)), "tags of the wanted mods");
+  ok(!hv.some((m) => /Physical/.test(m.name)), "no unrelated tags");
+  ok(hv.every((m) => m.approximate && m.p > 0));
+  ok(plan.methods.some((m) => m.kind === "lock" && m.harvestKeep && m.approximate), "Harvest keep-side reforge");
 });
 
 // ------------------------------------------------------------------ runner

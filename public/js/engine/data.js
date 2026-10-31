@@ -11,7 +11,16 @@ export const META_GROUPS = {
 
 export const INFLUENCES = ["shaper", "elder", "crusader", "hunter", "redeemer", "warlord"];
 
-export function indexData(raw) {
+// hand-written data under public/data/manual/ (mechanics RePoE doesn't export)
+export const MANUAL_FILES = ["harvest"];
+
+/** Loads poe1.json and the manual files. readJson(path relative to public/data/) returns a promise of JSON. */
+export async function loadDb(readJson) {
+  const [raw, ...manual] = await Promise.all(["poe1.json", ...MANUAL_FILES.map((f) => `manual/${f}.json`)].map(readJson));
+  return indexData(raw, Object.fromEntries(MANUAL_FILES.map((f, i) => [f, manual[i]])));
+}
+
+export function indexData(raw, manual = {}) {
   const db = {
     version: raw.version,
     classes: raw.classes,
@@ -26,6 +35,7 @@ export function indexData(raw) {
     classByDisplayName: new Map(),
     fossilAdded: new Set(),
     benchByClass: new Map(),
+    manual,
   };
   for (const m of raw.mods) {
     m.tpl = compileTemplate(m.x);

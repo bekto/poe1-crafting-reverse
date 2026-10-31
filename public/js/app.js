@@ -1,9 +1,9 @@
-import { indexData } from "./engine/data.js";
+import { loadDb } from "./engine/data.js";
 import { parseItemText, identifyMods } from "./engine/parse.js";
 import { tierTables } from "./engine/pool.js";
 import { ITEMS, LABELS } from "./samples.js";
 
-const DATA_URL = new URL("../data/poe1.json", import.meta.url).href;
+const DATA_DIR = new URL("../data/", import.meta.url).href;
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 
@@ -15,7 +15,7 @@ const pending = new Map();
 
 async function init() {
   try {
-    db = indexData(await (await fetch(DATA_URL)).json());
+    db = await loadDb(async (path) => (await fetch(new URL(path, DATA_DIR))).json());
     $("meta").textContent = `Path of Exile 1 · game data ${db.version}`;
     $("readBtn").disabled = false;
   } catch (e) {
@@ -138,7 +138,7 @@ function runPlan(req) {
     return new Promise((resolve, reject) => {
       const id = ++reqId;
       pending.set(id, (res) => (res.ok ? resolve(res.plan) : reject(new Error(res.error))));
-      worker.postMessage({ id, dataUrl: DATA_URL, req });
+      worker.postMessage({ id, dataDir: DATA_DIR, req });
     });
   }
   // fallback: run on the main thread
@@ -177,19 +177,19 @@ function renderPlan(plan, ilvl) {
     d.className = "method" + (i === 0 && m.p > 0 ? " best" : "") + (realistic ? "" : " unlikely");
     if (i === 0) d.open = true;
     const odds = m.kind === "lock" && m.p > 0
-      ? `<b>~${oneIn(m.p)} tries</b><small>stage 1: ${pct(m.p1)} per try · stage 2: ${pct(m.p2)} per lock craft + Chaos Orb${m.exact ? " · exact" : ""}</small>`
+      ? `<b>~${oneIn(m.p)} tries</b><small>stage 1: ${pct(m.p1)} per try · stage 2: ${pct(m.p2)} per try${m.approximate ? " · approximate" : m.exact ? " · exact" : ""}</small>`
       : m.kind === "altregal" && m.p > 0
       ? `<b>~${oneIn(m.p)} alterations</b><small>${pct(m.p1)} per alteration to start · ${pct(m.p2)} that regal + exalts finish it${m.exact ? " · exact" : ""}</small>`
       : m.p > 0
-      ? `<b>1 in ${oneIn(m.p)}</b><small>${pct(m.p)} per try${m.n90 ? ` · ${m.n90.toLocaleString()} tries for 90%` : ""}${m.exact ? " · exact" : m.hits < 30 ? " · rough estimate" : ""}</small>`
+      ? `<b>1 in ${oneIn(m.p)}</b><small>${pct(m.p)} per try${m.n90 ? ` · ${m.n90.toLocaleString()} tries for 90%` : ""}${m.approximate ? " · approximate" : m.exact ? " · exact" : m.hits < 30 ? " · rough estimate" : ""}</small>`
       : m.exact
       ? `<b>Impossible</b><small>this method can't make the item</small>`
       : `<b>&lt; 1 in ${oneIn(m.upperBound)}</b><small>no hits in ${m.trials.toLocaleString()} simulated tries</small>`;
     const kind = {
-      chaos: "Chaos spam", essence: "Essence", fossil: "Fossils",
+      chaos: "Chaos spam", essence: "Essence", fossil: "Fossils", harvest: "Harvest reforge",
       altregal: m.block ? "Alteration route with a metacraft" : "Alteration route · cheap currency, many tries",
-      lock: "Metacraft · two stages, each stage-2 try needs a new lock craft",
-    }[m.kind] + (m.multimod ? " · multimod" : "");
+      lock: m.harvestKeep ? "Two stages · Harvest rerolls one side" : "Metacraft · two stages, each stage-2 try needs a new lock craft",
+    }[m.kind] + (m.multimod ? " · multimod" : "") + (m.approximate ? " · Harvest data is hand-written" : "");
     d.innerHTML = `
       <summary><span class="mname">${esc(m.name)}<span class="kind">${kind}${m.corrupt ? " · corrupted essence" : ""}</span></span><span class="odds">${odds}</span></summary>
       <ol class="steps">${m.steps.map((s) => `<li><b>${esc(s.title)}</b><span>${esc(s.detail)}</span></li>`).join("")}</ol>`;

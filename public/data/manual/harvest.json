@@ -1,0 +1,31 @@
+{
+  "_comment": [
+    "Harvest (Horticrafting) reforges for rare items. RePoE doesn't export Harvest crafts, so this file is written by hand.",
+    "Source: Path of Exile wiki, 'Harvest crafting' and 'Horticrafting Station' (https://www.poewiki.net/wiki/Harvest_crafting), as of patch 3.2x.",
+    "The wiki couldn't be fetched from the build environment, so the list below was written from that page's known contents and is NOT re-verified.",
+    "approximate: true makes the app label every Harvest plan as approximate.",
+    "moreCommonMultiplier: how much more likely the craft's tag mods are for the rest of the roll. The game only says 'more common'; 10 matches the x10 of a fossil's 'more' and is an assumption.",
+    "cost: lifeforce amounts change between patches and are left out until verified (null). The app then shows 'see the Horticrafting Station' and can't rank these crafts by cost."
+  ],
+  "approximate": true,
+  "moreCommonMultiplier": 10,
+  "reforgeTag": [
+    { "tag": "physical", "name": "Physical", "cost": null },
+    { "tag": "fire", "name": "Fire", "cost": null },
+    { "tag": "cold", "name": "Cold", "cost": null },
+    { "tag": "lightning", "name": "Lightning", "cost": null },
+    { "tag": "chaos", "name": "Chaos", "cost": null },
+    { "tag": "life", "name": "Life", "cost": null },
+    { "tag": "defences", "name": "Defence", "cost": null },
+    { "tag": "attack", "name": "Attack", "cost": null },
+    { "tag": "caster", "name": "Caster", "cost": null },
+    { "tag": "critical", "name": "Critical", "cost": null },
+    { "tag": "speed", "name": "Speed", "cost": null },
+    { "tag": "attribute", "name": "Attribute", "cost": null }
+  ],
+  "reforgeTagText": "Reforge a Rare item with new random modifiers, including a {name} modifier. {name} modifiers are more common",
+  "reforgeKeep": [
+    { "keep": "p", "text": "Reforge a Rare item, keeping all Prefixes", "cost": null },
+    { "keep": "s", "text": "Reforge a Rare item, keeping all Suffixes", "cost": null }
+  ]
+}
