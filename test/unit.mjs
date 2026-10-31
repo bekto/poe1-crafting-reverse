@@ -614,6 +614,22 @@ test("unveiled mods are identified and get Veiled Chaos / Aisling plans", async 
   ok(!plan.methods.some((m) => m.kind === "lock" && m.p === 0), "impossible two-stage plans are dropped");
 });
 
+// ------------------------------------------------------------------ recombinator
+test("recombinator plan: two magic items, all pooled mods kept", async () => {
+  const { planCraft } = await import("../public/js/engine/craft.js");
+  const { ITEMS } = await import("../public/js/samples.js");
+  const { item, ident } = parse(ITEMS.ring);
+  const want = ident.mods.filter((_, i) => [0, 3].includes(i)).map((m) => ({ mod: m.mod, minMod: m.mod }));
+  const plan = planCraft(db, item.base, item.ilvl, [], want, [], { refineMs: 0 });
+  const r = plan.methods.find((m) => m.kind === "recomb");
+  ok(r && r.approximate && r.advanced);
+  const k = db.manual.recombinator.keepCounts["1"].find(([n]) => n === 1)[1];
+  near(r.pc, k * k, 1e-12, "one prefix + one suffix, each kept from a pool of one");
+  ok(r.steps.some((s) => /Recombinator/.test(s.title)));
+  const one = planCraft(db, item.base, item.ilvl, [], want.slice(0, 1), [], { refineMs: 0 });
+  ok(!one.methods.some((m) => m.kind === "recomb"), "no recombinator for a single mod");
+});
+
 // ------------------------------------------------------------------ Harvest
 test("Harvest data is loaded from data/manual and its plans are marked approximate", async () => {
   const h = db.manual.harvest;

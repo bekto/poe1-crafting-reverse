@@ -136,6 +136,12 @@ export function buildSteps(ctx, m) {
       detail: `Adds ${m.influence} influence and one random ${m.influence} mod; ${pct(m.p2)} that it's ${t}. On a miss, start again from stage 1. Overall about ${fmtN(1 / m.p)} stage-1 tries and ${fmtN(1 / m.p2)} ${m.orb}s. Assumes the item has room on both sides, so the odds are on the safe side.`,
     });
   }
+  else if (m.kind === "recomb") {
+    const list = (x) => x.map((t) => `"${one(t.mod.x)}"`).join(" and ");
+    steps.push({ title: `Magic item 1: Alterations until it has only ${list(m.A)}`, detail: `${pct(m.pA)} per alteration (about ${fmtN(1 / m.pA)}). It must have no other mods, or they dilute the pool.` });
+    steps.push({ title: `Magic item 2: Alterations until it has only ${list(m.B)}`, detail: `${pct(m.pB)} per alteration (about ${fmtN(1 / m.pB)}).` });
+    steps.push({ title: "Recombinator", detail: `Combines the two. The result keeps a random number of the pooled prefixes and of the pooled suffixes; ${pct(m.pc)} that it keeps all of them (community-measured table, approximate). About ${fmtN(m.attempts)} recombinations, ${fmtN(m.expected)} actions in all. Advanced: exclusive mods and extra random mods aren't modelled.` });
+  }
   else if (m.kind === "veiledChaos") {
     const t = `"${one(m.target.mod.x)}"`;
     steps.push({ title: "Spam Veiled Chaos Orbs", detail: `Each one rerolls the item with a veiled mod. Keep it when the veiled mod is a ${sideName(m.target.side)} (assumed ${pct(m.sideChance)}) and the rest has ${targetList(ctx)} (${pct(m.pRest)}). Don't let a mod from the same group as ${t} roll: it would block the unveil.` });

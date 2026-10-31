@@ -12,7 +12,7 @@ export const META_GROUPS = {
 export const INFLUENCES = ["shaper", "elder", "crusader", "hunter", "redeemer", "warlord"];
 
 // hand-written data under public/data/manual/ (mechanics RePoE doesn't export)
-export const MANUAL_FILES = ["harvest", "eldritch"];
+export const MANUAL_FILES = ["harvest", "eldritch", "recombinator"];
 
 /** Loads poe1.json and the manual files. readJson(path relative to public/data/) returns a promise of JSON. */
 export async function loadDb(readJson) {

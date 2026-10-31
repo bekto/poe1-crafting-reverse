@@ -62,6 +62,7 @@ The planner currently covers:
 - Influence: for one wanted influenced mod, roll the rest on a base without influence, then slam the matching influenced Exalted Orb (Crusader's, Hunter's, ..., Shaper's, Elder's). For a wanted influenced mod from each of two influences: one influenced Exalted Orb on each of two bases, then an Awakener's Orb
 - Eldritch currency (`public/data/manual/eldritch.json`): reads the Searing Exarch / Eater of Worlds implicits and which one is dominant; two-stage plans with Eldritch Chaos Orbs rerolling the dominant side; the alteration route with Eldritch Exalted Orbs when the missing mods are all on one side; Orbs of Conflict in the steps when the dominance is the wrong way round
 - Veiled mods (the `unveiled` mod domain): Veiled Chaos Orb then unveil, or Aisling on an item that has the rest, for one wanted unveiled mod; unveiling picks the mod from Jun's 3 options
+- Recombinators (advanced, approximate; `public/data/manual/recombinator.json`): up to 2 prefixes and 2 suffixes split over two magic items, then a Recombinator that has to keep every pooled mod
 - Bench crafts at the end: one, or two with "Can have up to 3 Crafted Modifiers" (shown as "+ multimod"), with a check that the free slots are left. Bench costs come from the game data.
 
 ### Assumptions to verify
@@ -78,6 +79,7 @@ These aren't in the game data. Each one is a named constant in `public/js/engine
 - An influenced Exalted Orb adds one random mod of its influence; the odds assume both sides have room, which is on the safe side. The Awakener's Orb keeps one influenced mod from each item (each has exactly one in the plan) and rolls the rest like a Chaos Orb, with the kept mods counting towards the usual mod count.
 - Eldritch Chaos Orbs reroll only the dominant side (Searing Exarch: prefixes, Eater of Worlds: suffixes), with the same mod-count rule as the side locks. Eldritch Exalted Orbs add only to the dominant side.
 - `VEILED_PREFIX_CHANCE`, `UNVEIL_CHOICES`: a Veiled Chaos Orb's veiled mod is a prefix or a suffix with equal chance, and unveiling offers 3 mods, drawn by weight with no repeated mod group. No mod from the wanted unveiled mod's group may be on the item. Aisling is modelled on a full item, so the veiled mod takes the side of the removed mod.
+- Recombinator: how many pooled mods per side the result keeps comes from a community-measured table. Exclusive mods and extra random mods aren't modelled. The input magic items must have only the wanted mods.
 - An Orb of Annulment removes one explicit mod chosen uniformly at random.
 - Each new mod is picked with chance proportional to its spawn weight, among the mods that are still allowed (no mod from a group already on the item, and a free prefix or suffix slot).
 
@@ -85,7 +87,7 @@ These aren't in the game data. Each one is a named constant in `public/js/engine
 
 ### Not covered yet
 
-Harvest crafts other than reforges, Eldritch Annulment (not planned), recombinators, beastcrafting, Aisling, the 3.29 Allflame mechanic, and prices from poe.ninja.
+Harvest crafts other than reforges, Eldritch Annulment (not planned), beastcrafting, Aisling, the 3.29 Allflame mechanic, and prices from poe.ninja.
 
 ## Tests
 

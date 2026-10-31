@@ -592,6 +592,52 @@ function veiledMethods(ctx, trials, wanted) {
   return out;
 }
 
+// ---------------------------------------------------------------- recombinator
+
+/** Chance that one Alteration gives a magic item with exactly these mods (at most one prefix and one suffix). */
+function magicOnlyChance(ctx, targets) {
+  const W = { p: 0, s: 0 };
+  for (const e of ctx.pool) W[e.mod.g] += e.w;
+  const Wt = W.p + W.s;
+  const sat = (t) => ctx.pool.filter((e) => satisfies(e.mod, t)).reduce((a, e) => a + e.w, 0);
+  if (targets.length === 1) return (1 - MAGIC_TWO_MOD_CHANCE) * sat(targets[0]) / Wt;
+  const [A, B] = targets;
+  return MAGIC_TWO_MOD_CHANCE * ((sat(A) / Wt) * (sat(B) / W[B.side]) + (sat(B) / Wt) * (sat(A) / W[A.side]));
+}
+
+/**
+ * Advanced: two magic items that carry the wanted mods between them (made with Alterations), combined with a
+ * Recombinator. Each side's mods go into one pool and the result keeps a random number of them
+ * (data/manual/recombinator.json); the plan needs all of them kept.
+ */
+function recombinatorMethods(ctx) {
+  const h = ctx.db.manual?.recombinator;
+  if (!h || ctx.fixedEntries.length || ctx.hard.length < 2) return [];
+  const P = ctx.hard.filter((t) => t.side === "p"), S = ctx.hard.filter((t) => t.side === "s");
+  if (P.length > 2 || S.length > 2) return [];
+  const keepAll = (n) => (n === 0 ? 1 : (h.keepCounts[n] || []).find(([k]) => k === n)?.[1] || 0);
+  const pc = keepAll(P.length) * keepAll(S.length);
+  if (!(pc > 0)) return [];
+  // every way to split the mods over two magic items (each with at most one prefix and one suffix)
+  let best = null;
+  const n = ctx.hard.length;
+  for (let mask = 1; mask < (1 << n) - 1; mask++) {
+    const A = ctx.hard.filter((_, i) => mask & (1 << i)), B = ctx.hard.filter((_, i) => !(mask & (1 << i)));
+    if (A.length > 2 || B.length > 2 || [A, B].some((x) => x.length === 2 && x[0].side === x[1].side)) continue;
+    const pA = magicOnlyChance(ctx, A), pB = magicOnlyChance(ctx, B);
+    if (!(pA > 0 && pB > 0)) continue;
+    const actions = (1 / pA + 1 / pB + 1) / pc;
+    if (!best || actions < best.actions) best = { A, B, pA, pB, actions };
+  }
+  if (!best) return [];
+  return [{
+    kind: "recomb", name: "Two magic items, then a Recombinator", approximate: true, advanced: true,
+    A: best.A, B: best.B, pA: best.pA, pB: best.pB, pc, attempts: 1 / pc,
+    p: 1 / best.actions, expected: best.actions, n90: null, exact: false, hits: null, trials: null,
+    currency: [["Orb of Alteration", 1], ["Recombinator", 1]],
+  }];
+}
+
 function pickCrafts(wanted, crafts) {
   return wanted.filter((w) => crafts.some((t) => t.wantedMod === w.mod));
 }
@@ -618,7 +664,7 @@ export function planCraft(db, base, ilvl, influences, wanted, fixed = [], opts =
     if (m && ar && m.p > ar.p) methods.push(m);
   }
   methods.push(...lockMethods(ctx, trials, wanted));
-  methods.push(...influenceExaltMethods(ctx, trials, wanted), ...awakenerMethods(ctx, trials, wanted), ...veiledMethods(ctx, trials, wanted));
+  methods.push(...influenceExaltMethods(ctx, trials, wanted), ...awakenerMethods(ctx, trials, wanted), ...veiledMethods(ctx, trials, wanted), ...recombinatorMethods(ctx));
   for (const m of methods) m.ctx = m.ctx || ctx;
 
   // with two or more bench-able mods: the same methods with multimod and two bench crafts
@@ -644,7 +690,7 @@ export function planCraft(db, base, ilvl, influences, wanted, fixed = [], opts =
   for (const m of methods) {
     m.steps = buildSteps(m.ctx, m);
     m.crafts = m.ctx.crafts.map((c) => ({ mod: c.wantedMod, option: c.option }));
-    delete m.ctx; delete m.stage1Ctx; delete m.stage2Ctx; delete m.target; delete m.targets;
+    delete m.ctx; delete m.stage1Ctx; delete m.stage2Ctx; delete m.target; delete m.targets; delete m.A; delete m.B;
   }
   const minIlvl = Math.max(base.lvl || 1, ...ctx.targets.map((t) => t.minIlvl || 1));
   const impossible = ctx.hard.filter((t) => t.naturalWeight === 0);

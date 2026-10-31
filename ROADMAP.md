@@ -27,7 +27,8 @@ Work top to bottom. Each item is done when its acceptance check passes, the test
   - Notes: build_data exports eldritch implicits (rank from the id); the parser reads them from Ctrl+C and Ctrl+Alt+C and works out dominance. New methods: Eldritch Chaos two-stage, Eldritch Exalt alteration route (brute-force checked); Conflict and Ember/Ichor in the steps. Eldritch Annulment isn't planned (see DECISIONS).
 - [x] **Veiled mods.** Aisling slams and Veiled Chaos Orbs, using the `unveiled` mod domain.
   - Notes: unveiled mods in the data and the parser; Veiled Chaos Orb (exact rest-of-roll with a placeholder veiled slot and the target's group kept empty) and Aisling (two stages). Unveil odds exact as "the target is among Jun's 3 options". Impossible derived plans are now dropped.
-- [ ] **Recombinators.** Mark this as advanced and approximate if the mechanics aren't fully known.
+- [x] **Recombinators.** Mark this as advanced and approximate if the mechanics aren't fully known.
+  - Notes: `manual/recombinator.json` (community keep-count table, labelled approximate); the best split of up to 2+2 wanted mods over two magic inputs, with exact alteration odds for the inputs. Labelled "Advanced · approximate" in the UI.
 - [ ] **Fractured bases in the alteration route** (currently skipped).
 - [ ] **League mechanic.** Add the current league's crafting mechanic (3.29 Allflame now, 3.30 after Nov 13) once its rules are documented. Write `public/data/manual/league.json`.
 

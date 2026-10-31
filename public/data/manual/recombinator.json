@@ -1,0 +1,17 @@
+{
+  "_comment": [
+    "Recombinator (Sentinel league, 3.18): combines two items of the same item class. For each side, the prefixes (or suffixes) of both items go into one pool; the result gets a number of them that depends on the pool size, picked at random.",
+    "Source: community testing posted during 3.18 Sentinel (reddit r/pathofexile 'Recombinator mechanics' threads, summarised on the PoE wiki 'Recombinator' page). GGG never published these numbers. Not re-verified from the build environment.",
+    "keepCounts[n] = [[mods kept, chance], ...] for a pool of n mods on one side. approximate: true makes the app label recombinator plans as approximate and advanced.",
+    "Exclusive mods and the chance of an extra random mod aren't modelled."
+  ],
+  "approximate": true,
+  "keepCounts": {
+    "1": [[0, 0.3333], [1, 0.6667]],
+    "2": [[1, 0.6667], [2, 0.3333]],
+    "3": [[1, 0.3889], [2, 0.5185], [3, 0.0926]],
+    "4": [[1, 0.1111], [2, 0.5926], [3, 0.2963]],
+    "5": [[2, 0.4321], [3, 0.5679]],
+    "6": [[2, 0.2798], [3, 0.7202]]
+  }
+}
