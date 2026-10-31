@@ -16,14 +16,12 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 
-# poe.ninja has moved its API before; the first base and index path that answer are used
-API_BASES = ["https://poe.ninja/api/data", "https://poe.ninja/poe1/api/data"]
-INDEX_PATHS = ["getindexstate", "index-state", "economy/index-state"]
-API = API_BASES[0]
-USER_AGENT = "reverse-crafter-prices/1.0 (static PoE crafting planner; hourly GitHub Action; contact via the repository's issues)"
-# poe.ninja overview types with items the planner prices
-CURRENCY_TYPES = ["Currency"]
-ITEM_TYPES = ["Essence", "Fossil", "Resonator"]
+# poe.ninja's PoE 1 economy API (checked 2026-10-31 from a GitHub runner; the old /api/data/*overview routes are gone)
+NINJA = "https://poe.ninja/poe1/api"
+INDEX_PATH = "data/index-state"
+OVERVIEW_PATH = "economy/exchange/current/overview"
+# exchange overview types with items the planner prices
+TYPES = ["Currency", "Essence", "Fossil", "Resonator"]
 
 
 def get(path, fixtures=None):
@@ -32,56 +30,51 @@ def get(path, fixtures=None):
         query = dict(urllib.parse.parse_qsl(path.split("?", 1)[1])) if "?" in path else {}
         file = Path(fixtures) / f"{name}{'_' + query['type'] if 'type' in query else ''}.json"
         return json.loads(file.read_text(encoding="utf-8"))
-    req = urllib.request.Request(f"{API}/{path}", headers={"User-Agent": USER_AGENT, "Accept": "application/json"})
+    req = urllib.request.Request(f"{NINJA}/{path}", headers={"User-Agent": USER_AGENT, "Accept": "application/json"})
     with urllib.request.urlopen(req, timeout=30) as r:
         return json.load(r)
 
 
-def find_api(fixtures=None):
-    """Picks the API base and index path that answer, reporting each try (GitHub annotations)."""
-    global API
-    if fixtures:
-        return "getindexstate"
-    for base in API_BASES:
-        for path in INDEX_PATHS:
-            API = base
-            try:
-                get(path)
-                print(f"::notice title=poe.ninja API::{base}/{path} works")
-                return path
-            except urllib.error.HTTPError as e:
-                print(f"::notice title=poe.ninja API::{base}/{path} -> HTTP {e.code}")
-            time.sleep(1)
-    raise SystemExit("no poe.ninja index endpoint answered; see the notices above")
-
-
 def current_league(fixtures=None):
-    state = get(find_api(fixtures), fixtures)
+    state = get(INDEX_PATH, fixtures)
     for lg in state.get("economyLeagues", []):
         name = lg.get("name", "")
-        if name and "Hardcore" not in name and name not in ("Standard",) and "SSF" not in name:
+        if name and "Hardcore" not in name and name != "Standard" and "SSF" not in name:
             return name
     raise SystemExit("couldn't find the current league in poe.ninja's index state")
 
 
+def chaos_factor(core):
+    """primaryValue is in core['primary'] (normally chaos); returns the factor that turns it into Chaos Orbs."""
+    primary = (core or {}).get("primary", "chaos")
+    if primary == "chaos":
+        return 1.0
+    rate = ((core or {}).get("rates") or {}).get("chaos")  # chaos per 1 primary
+    if not rate:
+        raise SystemExit(f"prices are in {primary!r} and there is no chaos rate to convert them")
+    return float(rate)
+
+
 def fetch(league, fixtures=None):
     prices = {}
-    for t in CURRENCY_TYPES:
-        data = get(f"currencyoverview?league={urllib.parse.quote(league)}&type={t}", fixtures)
+    for t in TYPES:
+        try:
+            data = get(f"{OVERVIEW_PATH}?league={urllib.parse.quote(league)}&type={t}", fixtures)
+        except urllib.error.HTTPError as e:
+            print(f"::warning title=poe.ninja::type {t}: HTTP {e.code}, skipped")
+            continue
+        factor = chaos_factor(data.get("core"))
+        names = {i["id"]: i["name"] for i in data.get("items", []) if i.get("id") and i.get("name")}
+        for c in (data.get("core") or {}).get("items", []):
+            if c.get("id") and c.get("name"):
+                names.setdefault(c["id"], c["name"])
         for line in data.get("lines", []):
-            name, value = line.get("currencyTypeName"), line.get("chaosEquivalent")
+            name, value = names.get(line.get("id")), line.get("primaryValue")
             if name and isinstance(value, (int, float)) and value > 0:
-                prices[name] = round(float(value), 4)
+                prices.setdefault(name, round(float(value) * factor, 4))
         if not fixtures:
+            print(f"::notice title=poe.ninja {t}::{len(data.get('lines', []))} lines; core keys {sorted((data.get('core') or {}).keys())}; primary {(data.get('core') or {}).get('primary')}")
             time.sleep(1)  # be gentle: one request at a time
-    for t in ITEM_TYPES:
-        data = get(f"itemoverview?league={urllib.parse.quote(league)}&type={t}", fixtures)
-        for line in data.get("lines", []):
-            name, value = line.get("name"), line.get("chaosValue")
-            if name and isinstance(value, (int, float)) and value > 0:
-                prices.setdefault(name, round(float(value), 4))
-        if not fixtures:
-            time.sleep(1)
     prices["Chaos Orb"] = 1.0
     return prices
 
@@ -98,8 +91,6 @@ def main(argv):
             fixtures = args.pop(0)
         else:
             out = Path(a)
-    if league:
-        find_api(fixtures)
     league = league or current_league(fixtures)
     prices = fetch(league, fixtures)
     if "Divine Orb" not in prices:
@@ -114,6 +105,9 @@ def main(argv):
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps(data, indent=1, ensure_ascii=False) + "\n", encoding="utf-8")
     print(f"{league}: {len(prices)} prices, 1 divine = {prices['Divine Orb']} chaos -> {out}")
+    if not fixtures:
+        sample = {k: prices.get(k) for k in ("Divine Orb", "Exalted Orb", "Orb of Alteration", "Regal Orb", "Orb of Annulment")}
+        print(f"::notice title=prices::{league}: {len(prices)} prices; {json.dumps(sample)}")
 
 
 if __name__ == "__main__":
