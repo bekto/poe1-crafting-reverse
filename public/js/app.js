@@ -306,9 +306,10 @@ function renderPlan(plan, ilvl) {
   if (unveiled.length) parts.push(`${unveiled.map((m) => `“${esc(m.x)}”`).join(", ")} is an unveiled mod: only the Veiled Chaos Orb and Aisling plans (or a bench craft, if you have unlocked it) can give it.`);
   if (normal.length) parts.push(`${normal.map((m) => `“${esc(m.x)}”`).join(", ")} can't roll naturally on this base at item level ${ilvl}; only an essence (or a higher item level) can give it.`);
   if (ilvl < plan.minIlvl) parts.push(`Your item level (${ilvl}) is below ${plan.minIlvl}, which the chosen tiers need.`);
+  if (prices && rankBy !== "cost") parts.push("Ranked by chance, with approximate plans after the others.");
   parts.push(prices
     ? `Costs use ${esc(prices.league)} prices from ${esc(prices.source)} (${esc(prices.updated)}). Items without a price (Harvest lifeforce, Aisling, some fossils) are listed as unpriced, and those plans rank after fully priced ones.`
-    : `There's no price data, so methods are ranked by chance per try (two-stage methods by total tries). A method with lower odds can still be cheaper if its currency is cheap.`);
+    : `There's no price data, so methods are ranked by chance per try (two-stage methods by total tries), with approximate plans (hand-written Harvest and recombinator data) after the others. A method with lower odds can still be cheaper if its currency is cheap.`);
   $("planSummary").innerHTML = `<p class="summary">${parts.join(" ")}</p>`;
   lastPlan = plan;
   $("rankBox").hidden = !prices;
@@ -317,7 +318,8 @@ function renderPlan(plan, ilvl) {
 
 function ranked(methods) {
   const list = [...methods];
-  if (rankBy !== "cost" || !prices) return list.sort((a, b) => b.p - a.p);
+  // by chance: plans that rest on hand-written, unverified data (Harvest, recombinators) come after the rest
+  if (rankBy !== "cost" || !prices) return list.sort((a, b) => (a.approximate ? 1 : 0) - (b.approximate ? 1 : 0) || b.p - a.p);
   const key = (m) => (!m.cost || !(m.p > 0) ? [3, -m.p] : m.cost.unpriced.length ? [m.cost.chaos > 0 ? 1 : 2, m.cost.chaos] : [0, m.cost.chaos]);
   return list.sort((a, b) => { const ka = key(a), kb = key(b); return ka[0] - kb[0] || ka[1] - kb[1]; });
 }
