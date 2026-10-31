@@ -3,7 +3,8 @@
 Work top to bottom. Each item is done when its acceptance check passes, the tests are green, and it's committed.
 
 ## Phase 1: make what exists trustworthy
-- [ ] **Unit tests.** Create `test/unit.mjs` with no framework (node:assert). Cover the parser (Ctrl+C, Ctrl+Alt+C, magic, normal, influenced, fractured and synthesised items), tier tables, `satisfies`, and bench option lookup. *Check:* at least 25 assertions, all passing.
+- [x] **Unit tests.** Create `test/unit.mjs` with no framework (node:assert). Cover the parser (Ctrl+C, Ctrl+Alt+C, magic, normal, influenced, fractured and synthesised items), tier tables, `satisfies`, and bench option lookup. *Check:* at least 25 assertions, all passing.
+  - Notes: 22 tests / 95 assertions. Found and fixed: influence aura mods never matched (RePoE repeats the effect line), "Potato Ring" matched the Kalandra "Ring" base, jewel bases/mods (domain `misc`) and Royale bases were missing/extra in the data build.
 - [ ] **More sample items.** Add 10 or more realistic items to `public/js/samples.js`: a weapon, a body armour, a jewel, a shield, an influenced item, a fractured item, and a hybrid-mod item such as life plus armour. *Check:* every sample identifies all of its mods.
 - [ ] **Summed mod values.** In Ctrl+C text, a hybrid mod and a pure mod with the same stat show as one summed line. Detect this and split it into both mods. *Check:* a unit test with a hybrid life + armour mod combined with a life mod.
 - [ ] **Check the odds against known values.** Add `test/reference.mjs` with simple cases you can work out by hand: one specific mod from a chaos roll, an alteration hitting one mod, an essence plus one mod. Compare the simulation with the exact answer (tolerance 10%). Document the mod-count and alteration assumptions.

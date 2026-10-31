@@ -54,7 +54,11 @@ function escapeRe(s) {
  */
 export function compileTemplate(text) {
   if (!text) return [];
-  return text.split("\n").map((line) => {
+  const lines = text.split("\n");
+  // RePoE text for aura mods repeats the effect on a second line ("Nearby Enemies have -9% to X\n-9% to X"),
+  // but the game shows only the first line
+  const shown = lines.filter((l, i) => i === 0 || !lines[i - 1].endsWith(" " + l));
+  return shown.map((line) => {
     const ranges = [];
     let re = "";
     let last = 0;

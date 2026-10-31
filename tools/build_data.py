@@ -52,10 +52,18 @@ for cid in CLASSES:
     classes_out[cid] = {"name": ic["name"], "influence": infl}
 
 # ---- bases --------------------------------------------------------------
+# base domain -> one-letter code shared with the mods that can roll on it
+BASE_DOMAINS = {"item": "i", "misc": "m"}
 bases_out = []
 all_tags = set()
+domain_tags = {}
 for bid, b in bases.items():
-    if b.get("domain") != "item" or b.get("item_class") not in classes_out:
+    if b.get("item_class") not in classes_out:
+        continue
+    # jewels live in the "misc" domain; cluster and abyss jewels have their own crafting rules
+    if b.get("domain") not in BASE_DOMAINS:
+        continue
+    if "Royale" in bid:  # PoE Royale event bases, not in the real game
         continue
     if b.get("release_state") != "released":
         continue
@@ -69,14 +77,18 @@ for bid, b in bases.items():
         "tags": b["tags"],
         "implicits": b.get("implicits", []),
         "lvl": b.get("drop_level", 1),
+        "dom": BASE_DOMAINS[b["domain"]],
     })
     all_tags.update(b["tags"])
+    domain_tags.setdefault(b["domain"], set()).update(b["tags"])
 for c in classes_out.values():
     all_tags.update(c["influence"].values())
+    domain_tags.setdefault("item", set()).update(c["influence"].values())
 
 # ---- mods ---------------------------------------------------------------
 def can_spawn_somewhere(m):
-    return any(w["weight"] > 0 and w["tag"] in all_tags for w in m.get("spawn_weights", []))
+    tags = domain_tags.get(m["domain"], set())
+    return any(w["weight"] > 0 and w["tag"] in tags for w in m.get("spawn_weights", []))
 
 keep = {}
 for mid, m in mods.items():
@@ -85,7 +97,7 @@ for mid, m in mods.items():
         continue
     if "Royale" in mid:  # PoE Royale event mods, not in the real game
         continue
-    if dom == "item":
+    if dom in BASE_DOMAINS:
         if not (can_spawn_somewhere(m) or m.get("is_essence_only")):
             continue
     elif dom == "crafted":
@@ -127,7 +139,7 @@ def compact_mod(mid, m):
         "id": mid,
         "n": m.get("name") or "",
         "g": "p" if m["generation_type"] == "prefix" else "s" if m["generation_type"] == "suffix" else m["generation_type"][0],
-        "d": m["domain"][0],  # i=item, c=crafted
+        "d": m["domain"][0],  # i=item, m=misc (jewels), c=crafted
         "l": m.get("required_level", 1),
         "gr": m.get("groups", []),
         "ty": m.get("type"),

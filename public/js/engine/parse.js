@@ -12,6 +12,8 @@ const FLAG_LINES = {
   "Searing Exarch Item": "exarch", "Eater of Worlds Item": "eater",
 };
 const PROPERTY_RE = /^(Requirements|Level|Str|Dex|Int|Sockets|Item Level|Quality|Armour|Evasion Rating|Energy Shield|Ward|Physical Damage|Elemental Damage|Chaos Damage|Critical Strike Chance|Attacks per Second|Weapon Range|Chance to Block|Limited to|Radius|Stack Size|Note|Requires|Talisman Tier)\b/;
+// usage hints the game prints under some items; never mods
+const DESCRIPTION_RE = /^(Place into an allocated Jewel Socket|Right click to|Shift click to|Can be used in|Travel to this|Place an item|Can only be)/;
 const WEAPON_TYPE_LINE = /^(Bow|Claw|Dagger|Rune Dagger|One Handed (Axe|Mace|Sword)|Two Handed (Axe|Mace|Sword)|Sceptre|Staff|Warstaff|Wand|Thrusting One Handed Sword|Fishing Rod)$/;
 
 function cleanAdvancedLine(line) {
@@ -56,7 +58,11 @@ export function parseItemText(db, rawText) {
   if (item.rarity === "normal" || !item.baseLine) baseText = item.name;
   baseText = (baseText || "").replace(/^Superior\s+/, "").replace(/^Synthesised\s+/, "");
   let baseName = db.basesByName.has(baseText) ? baseText : null;
-  if (!baseName && baseText) baseName = db.baseNamesSorted.find((n) => baseText.includes(n)) || null;
+  // magic names wrap the base in an affix name ("Hale Onyx Amulet of the Whelpling"): look for it as whole words
+  if (!baseName && baseText && item.rarity === "magic") {
+    const padded = ` ${baseText} `;
+    baseName = db.baseNamesSorted.find((n) => padded.includes(` ${n} `)) || null;
+  }
   if (!baseName && errors.length === 0) errors.push(`Couldn't recognise the base type "${baseText}".`);
 
   // body sections
@@ -85,7 +91,7 @@ export function parseItemText(db, rawText) {
         };
         continue;
       }
-      if (PROPERTY_RE.test(rawLine) || WEAPON_TYPE_LINE.test(rawLine)) { currentBlock = null; continue; }
+      if (PROPERTY_RE.test(rawLine) || WEAPON_TYPE_LINE.test(rawLine) || DESCRIPTION_RE.test(rawLine)) { currentBlock = null; continue; }
       const { text: t0, marker } = stripMarker(rawLine);
       const t = item.advanced ? cleanAdvancedLine(t0) : t0;
       if (currentBlock && !currentBlock.skip) {

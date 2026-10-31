@@ -33,9 +33,10 @@ export function maxAffixes(base, rarity = "rare") {
  */
 export function basePool(db, base, influences, ilvl = null, opts = {}) {
   const tags = itemTags(db, base, influences);
+  const dom = base.dom || "i";
   const out = [];
   for (const mod of db.mods) {
-    if (mod.d !== "i" || (mod.g !== "p" && mod.g !== "s")) continue;
+    if (mod.d !== dom || (mod.g !== "p" && mod.g !== "s")) continue;
     if (mod.e && !opts.allowEssenceOnly) continue;
     if (db.fossilAdded.has(mod.id) && !(opts.extraMods && opts.extraMods.has(mod.id))) continue;
     if (ilvl !== null && mod.l > ilvl) continue;
