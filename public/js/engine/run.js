@@ -5,7 +5,7 @@ export function runPlan(d, req) {
   const base = d.bases.find((b) => b.id === req.baseId);
   const wanted = req.wanted.map((w) => ({ mod: d.modById.get(w.modId), minMod: d.modById.get(w.minModId) }));
   const fixed = req.fixedIds.map((i) => d.modById.get(i));
-  const plan = planCraft(d, base, req.ilvl, req.influences, wanted, fixed, { trials: req.trials || 20000 });
+  const plan = planCraft(d, base, req.ilvl, req.influences, wanted, fixed, { trials: req.trials || 20000, prices: req.prices || null });
   return slimPlan(plan);
 }
 
@@ -21,7 +21,8 @@ function slimPlan(p) {
     methods: p.methods.map((m) => ({
       kind: m.kind, name: m.name, p: m.p, hits: m.hits, trials: m.trials, upperBound: m.upperBound,
       expected: m.expected, n90: m.n90, exact: !!m.exact, currency: m.currency, steps: m.steps, corrupt: m.corrupt || false,
-      p1: m.p1, p2: m.p2, multimod: !!m.multimod, approximate: !!m.approximate, harvestKeep: !!m.harvestKeep, lockSide: m.lockSide || null, block: m.block ? m.block.tag : null,
+      p1: m.p1, p2: m.p2, multimod: !!m.multimod, approximate: !!m.approximate, harvestKeep: !!m.harvestKeep,
+      restartCurrency: m.restartCurrency || null, annul: m.annul ? { currency: m.annul.currency, maxAnnuls: m.annul.maxAnnuls, choice: m.annul.choice, cost: m.annul.cost, restartCost: m.annul.restartCost } : null, lockSide: m.lockSide || null, block: m.block ? m.block.tag : null,
       crafts: (m.crafts || []).map((c) => ({ mod: slimMod(c.mod), option: { mod: slimMod(c.option.mod), cost: c.option.cost } })),
     })),
   };

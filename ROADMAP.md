@@ -19,7 +19,8 @@ Work top to bottom. Each item is done when its acceptance check passes, the test
   - Notes: up to 2 bench crafts + multimod (exact and simulated), side lock + Chaos as a two-stage method, attack/caster block for the exalt stage; engine split into sim.js / craft.js / steps.js; meta crafts found by mod group in `db.meta`. 33 reference checks.
 - [x] **Harvest reforges.** Add "Reforge with a guaranteed X modifier" for each tag and "Reforge keeping prefixes/suffixes". This data isn't in RePoE, so write `public/data/manual/harvest.json` with sources. Mark it as approximate in the UI.
   - Notes: 12 tag reforges (exact via a mixture over the guaranteed first mod, brute-force checked) and keep-prefixes/suffixes as a stage-2 option; `loadDb` loads `data/manual/*.json`. The wiki wasn't reachable, so costs are null and the multiplier is an assumption (DECISIONS).
-- [ ] **Annulment-aware alteration route.** When an exalt misses, compare annulling with starting over, and report the cheaper choice.
+- [x] **Annulment-aware alteration route.** When an exalt misses, compare annulling with starting over, and report the cheaper choice.
+  - Notes: `engine/annul.js` simulates "annul a miss up to K times (K = 1..3), then start over" from the exact stage-1 distribution; starting over stays exact. With `opts.prices` the planner picks the cheaper option (prices arrive in Phase 3). The K = 0 case matches the exact route.
 - [ ] **Awakener's Orb and Conqueror's Exalts.** Plan for items with two influences, or mods that need an influence.
 - [ ] **Eldritch currency.** Eldritch implicits (Exarch/Eater), Eldritch Chaos, Exalted and Annulment orbs (prefix/suffix by dominance), and Orbs of Conflict. Requires parsing eldritch implicits.
 - [ ] **Veiled mods.** Aisling slams and Veiled Chaos Orbs, using the `unveiled` mod domain.

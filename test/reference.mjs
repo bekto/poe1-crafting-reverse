@@ -10,6 +10,7 @@ import { planCraft, buildContext, stageOneTargets } from "../public/js/engine/cr
 export { stageOneTargets };
 import { exactReroll, exactAltRegal, exactRerollFirstFrom } from "../public/js/engine/exact.js";
 import { RARE_COUNTS } from "../public/js/engine/assumptions.js";
+import { simulateAnnulRoute } from "../public/js/engine/annul.js";
 import { satisfies } from "../public/js/engine/pool.js";
 
 const TOLERANCE = 0.10; // relative
@@ -265,6 +266,14 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     const ea = exactAltRegal(ctx, s1, block), ba = bruteAltRegal(ctx, s1, block);
     report(["p1", "p2", "avgExalts"].every((k) => relErr(ea[k], ba[k]) <= EXACT_TOLERANCE), `alteration route with "Cannot roll Attack Modifiers" ${ids.join(" + ")}: p2 ${ea.p2.toPrecision(6)} vs ${ba.p2.toPrecision(6)}`);
   }
+  console.log("\nAnnul simulator with no annulments against the exact alteration route (tolerance 5%):");
+  for (const ids of [["P2t2", "P3t1"], ["P2t2", "P3t1", "S2t1"], ["S1t2", "S3t2", "S2t1"]]) {
+    const ctx = richContext(rich, ids);
+    const s1 = stageOneTargets(ctx);
+    const ex = exactAltRegal(ctx, s1), sim = simulateAnnulRoute(ctx, s1, 0, 40000);
+    report(relErr(sim.ps, ex.p2) <= 0.05 && relErr(sim.exalts, ex.avgExalts) <= 0.05, `${ids.join(" + ")}: finish ${sim.ps.toFixed(4)} vs ${ex.p2.toFixed(4)}, exalts ${sim.exalts.toFixed(3)} vs ${ex.avgExalts.toFixed(3)}`);
+  }
+  console.log("");
   for (const ids of RICH_ALT_CASES) {
     const ctx = richContext(rich, ids);
     const s1 = stageOneTargets(ctx);

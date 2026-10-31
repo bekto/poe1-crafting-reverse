@@ -7,6 +7,7 @@ import {
   stats, exactStats, targetMask, BLOCK_BITS,
 } from "./sim.js";
 import { buildSteps, pickBench } from "./steps.js";
+import { simulateAnnulRoute, ANNUL_LIMITS } from "./annul.js";
 
 export { currencyName } from "./steps.js";
 
@@ -52,6 +53,7 @@ export function buildContext(db, base, ilvl, influences, wanted, fixed = [], opt
     caps: opts.caps || maxAffixes(base),
     counts: opts.counts || rareModCounts(base),
     noExact: !!opts.noExact,
+    prices: opts.prices || null,
   };
 }
 
@@ -291,7 +293,36 @@ function altRegalMethod(ctx, trials, block = null) {
 
 function altRegalResult(ctx, s1, r, exact, block) {
   const total = r.p1 * r.p2;
+  const restart = total > 0 ? {
+    "Orb of Alteration": 1 / total, "Orb of Augmentation": r.augPerAlt / total, "Regal Orb": 1 / r.p2, "Exalted Orb": r.avgExalts / r.p2,
+  } : null;
+  // when exalts can miss, compare annulling a miss (up to K times per item) with starting over right away
+  let annul = null;
+  if (!block && r.p1 > 0 && r.p2 < 1 - 1e-9) {
+    const options = [];
+    for (const K of ANNUL_LIMITS) {
+      const a = simulateAnnulRoute(ctx, s1, K);
+      if (!(a.ps > 0)) continue;
+      options.push({
+        maxAnnuls: K, ps: a.ps, runs: a.runs,
+        currency: {
+          "Orb of Alteration": 1 / (r.p1 * a.ps), "Orb of Augmentation": r.augPerAlt / (r.p1 * a.ps), "Regal Orb": 1 / a.ps,
+          "Exalted Orb": a.exalts / a.ps, "Orb of Annulment": a.annuls / a.ps,
+        },
+      });
+    }
+    if (options.length) {
+      const cr = costOf(restart, ctx.prices);
+      for (const o of options) o.cost = costOf(o.currency, ctx.prices);
+      const priced = options.filter((o) => o.cost !== null);
+      // without prices, show the variant that annuls at most once
+      const best = priced.length ? priced.sort((a, b) => a.cost - b.cost)[0] : options[0];
+      annul = { ...best, options, restartCost: cr, choice: cr !== null && best.cost !== null ? (best.cost < cr ? "annul" : "restart") : null };
+    }
+  }
   return {
+    restartCurrency: restart,
+    annul,
     kind: "altregal",
     name: block ? `Alteration → Regal → "${block.mod.x}" + Exalted Orb` : "Alteration → Regal → Exalted Orb",
     block,
@@ -304,6 +335,19 @@ function altRegalResult(ctx, s1, r, exact, block) {
     expectedRegals: r.p2 > 0 ? 1 / r.p2 : null,
     expectedExalts: r.p2 > 0 ? r.avgExalts / r.p2 : null,
   };
+}
+
+/** Total cost in Chaos Orbs of {currency name: amount}, or null without a price for every item. */
+export function costOf(amounts, prices) {
+  if (!amounts || !prices) return null;
+  let c = 0;
+  for (const [name, n] of Object.entries(amounts)) {
+    if (!(n > 0)) continue;
+    const pr = name === "Chaos Orb" ? 1 : prices[name];
+    if (!(pr >= 0)) return null;
+    c += n * pr;
+  }
+  return c;
 }
 
 /** "Cannot roll Attack/Caster Modifiers" variants that help: the exalts still need mods without that tag. */
@@ -394,7 +438,8 @@ function mergeCounts(list) {
 export function planCraft(db, base, ilvl, influences, wanted, fixed = [], opts = {}) {
   const trials = opts.trials || 20000;
   const noExact = opts.exact === false; // force Monte Carlo (used by the tests)
-  const ctx = buildContext(db, base, ilvl, influences, wanted, fixed, { noExact });
+  const prices = opts.prices || null; // {currency name: price in Chaos Orbs}
+  const ctx = buildContext(db, base, ilvl, influences, wanted, fixed, { noExact, prices });
   const methods = [];
   methods.push(...rerollMethods(ctx, trials));
   const ar = altRegalMethod(ctx, Math.floor(trials / 2));
@@ -408,7 +453,7 @@ export function planCraft(db, base, ilvl, influences, wanted, fixed = [], opts =
 
   // with two or more bench-able mods: the same methods with multimod and two bench crafts
   if (ctx.extraBenchable.length && db.meta?.multimod) {
-    const ctx2 = buildContext(db, base, ilvl, influences, wanted, fixed, { maxCrafts: 2, noExact });
+    const ctx2 = buildContext(db, base, ilvl, influences, wanted, fixed, { maxCrafts: 2, noExact, prices });
     const mm = rerollMethods(ctx2, trials);
     const ar2 = altRegalMethod(ctx2, Math.floor(trials / 2));
     if (ar2) mm.push(ar2);

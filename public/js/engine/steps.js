@@ -89,7 +89,8 @@ export function buildSteps(ctx, m) {
       steps.push({ title: `Bench craft "${m.block.mod.x}", then Exalted Orbs`, detail: `Costs ${fmtCost(m.block.cost)}. It takes a ${sideName(m.block.side)} while it's on, and the exalts can't roll ${m.block.tag} mods, so more of them land on the mods you want. If there's no free ${sideName(m.block.side)} after the regal, exalt without it.` });
       steps.push({ title: "Remove the crafted mod at the bench", detail: `From a good magic item, ${pct(m.p2)} chance that the regal + exalts finish the rest (${m.avgExalts.toFixed(1)} exalts per attempt on average). Overall about ${fmtN(m.expectedAlts)} alterations, ${fmtN(m.expectedRegals)} regals and ${fmtN(m.expectedExalts)} exalts.` });
     } else {
-      steps.push({ title: "Regal Orb, then Exalted Orbs for the missing mods", detail: `From a good magic item, ${pct(m.p2)} chance that the regal + exalt slams finish the rest (${m.avgExalts.toFixed(1)} exalts per attempt on average). If a slam misses, start over. Overall about ${fmtN(m.expectedAlts)} alterations, ${fmtN(m.expectedRegals)} regals and ${fmtN(m.expectedExalts)} exalts.` });
+      steps.push({ title: "Regal Orb, then Exalted Orbs for the missing mods", detail: `From a good magic item, ${pct(m.p2)} chance that the regal + exalt slams finish the rest (${m.avgExalts.toFixed(1)} exalts per attempt on average). If a slam misses and you start over: about ${fmtN(m.expectedAlts)} alterations, ${fmtN(m.expectedRegals)} regals and ${fmtN(m.expectedExalts)} exalts in total.` });
+      if (m.annul) steps.push(annulStep(m));
     }
   } else if (m.kind === "lock") {
     const L = sideName(m.lockSide);
@@ -120,6 +121,20 @@ export function buildSteps(ctx, m) {
     steps.push({ title: `Bench craft "${one(o.mod.x)}"${crafts.length > 1 ? " (unless it rolled)" : ""}`, detail: `Crafting bench, costs ${fmtCost(o.cost) || "a little currency"}. Needs a free ${sideName(o.mod.g)}, which the odds above already require.` });
   }
   return steps;
+}
+
+function annulStep(m) {
+  const a = m.annul, c = a.currency;
+  const times = a.maxAnnuls === 1 ? "once" : `up to ${a.maxAnnuls} times`;
+  const counts = `about ${fmtN(c["Orb of Alteration"])} alterations, ${fmtN(c["Regal Orb"])} regals, ${fmtN(c["Exalted Orb"])} exalts and ${fmtN(c["Orb of Annulment"])} annulments in total`;
+  let verdict;
+  if (a.choice === "annul") verdict = `Annulling is cheaper at current prices: ${fmtN(a.cost)} vs ${fmtN(a.restartCost)} Chaos Orbs for starting over.`;
+  else if (a.choice === "restart") verdict = `Starting over is cheaper at current prices: ${fmtN(a.restartCost)} vs ${fmtN(a.cost)} Chaos Orbs with annulments.`;
+  else verdict = "Which is cheaper depends on prices; compare the totals.";
+  return {
+    title: "When an exalt misses: annul, or start over?",
+    detail: `Instead of starting over, use an Orb of Annulment (it removes a random mod, sometimes a wanted one) ${times} per item and keep exalting: ${counts} (simulated, ${a.runs.toLocaleString()} runs per option). ${verdict}`,
+  };
 }
 
 function targetList(ctx, except) {

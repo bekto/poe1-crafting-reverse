@@ -493,6 +493,25 @@ test("planner offers multimod, lock and block variants on real items", async () 
   ok(lock.some((m) => m.steps.some((s) => /Cannot Be Changed/.test(s.title))));
 });
 
+// ------------------------------------------------------------------ annulment
+test("alteration route compares annulling a miss with starting over, using prices when given", async () => {
+  const { planCraft, costOf } = await import("../public/js/engine/craft.js");
+  const { ITEMS } = await import("../public/js/samples.js");
+  eq(costOf({ "Exalted Orb": 2, "Chaos Orb": 3 }, { "Exalted Orb": 10 }), 23);
+  eq(costOf({ "Exalted Orb": 2 }, {}), null, "missing price");
+  const { item, ident } = parse(ITEMS.ring);
+  const want = ident.mods.filter((_, i) => [3, 5].includes(i)).map((m) => ({ mod: m.mod, minMod: m.mod }));
+  const plan = (prices) => planCraft(db, item.base, item.ilvl, [], want, [], { refineMs: 0, prices }).methods.find((m) => m.kind === "altregal" && !m.block);
+  const none = plan(null);
+  ok(none.annul && none.annul.options.length === 3, "three annul limits simulated");
+  eq(none.annul.choice, null, "no choice without prices");
+  ok(none.steps.some((s) => /annul, or start over/.test(s.title)));
+  const cheapAnnul = plan({ "Orb of Alteration": 0.1, "Orb of Augmentation": 0.05, "Regal Orb": 0.5, "Exalted Orb": 15, "Orb of Annulment": 0.01 });
+  eq(cheapAnnul.annul.choice, "annul", "nearly free annulments win");
+  const dearAnnul = plan({ "Orb of Alteration": 0.1, "Orb of Augmentation": 0.05, "Regal Orb": 0.5, "Exalted Orb": 15, "Orb of Annulment": 500 });
+  eq(dearAnnul.annul.choice, "restart", "very expensive annulments lose");
+});
+
 // ------------------------------------------------------------------ Harvest
 test("Harvest data is loaded from data/manual and its plans are marked approximate", async () => {
   const h = db.manual.harvest;
