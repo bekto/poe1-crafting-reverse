@@ -14,6 +14,10 @@ python3 -m http.server 8000
 
 The page has to be served over HTTP, because browsers block module scripts and `fetch` from `file://` pages.
 
+## Without item text
+
+Open "No item text? Build the item by hand" under the paste box. Pick a base type, item level and influences, then add mods from a searchable list (best tier first; you can relax tiers in step 2) and mark any fractured ones. "Use this item" continues as if you had pasted it.
+
 ## Update the game data after a new league or patch
 
 The app reads one data file, `public/data/poe1.json`. You build it from the community RePoE export:

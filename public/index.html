@@ -27,6 +27,22 @@
       </select>
     </div>
     <div id="parseMsg" class="msg" hidden></div>
+    <details id="builder" class="builder">
+      <summary>No item text? Build the item by hand</summary>
+      <div class="builder-grid">
+        <label>Base type <input id="bBase" list="bBaseList" autocomplete="off" placeholder="Start typing, e.g. Two-Stone Ring"></label>
+        <datalist id="bBaseList"></datalist>
+        <label>Item level <input id="bIlvl" type="number" min="1" max="100" value="84"></label>
+        <fieldset id="bInfl" class="infl-pick"><legend>Influence (up to two)</legend></fieldset>
+        <label>Add a mod <input id="bMod" list="bModList" autocomplete="off" placeholder="Pick the base first, then search mods" disabled></label>
+        <datalist id="bModList"></datalist>
+      </div>
+      <ul id="bMods" class="bmods" aria-label="Mods on the item"></ul>
+      <div class="row">
+        <button id="bUse" class="primary" disabled>Use this item</button>
+        <span id="bMsg" class="hint"></span>
+      </div>
+    </details>
   </section>
 
   <section class="panel" id="itemPanel" hidden>

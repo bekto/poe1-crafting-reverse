@@ -1,6 +1,6 @@
 import { loadDb } from "./engine/data.js";
 import { parseItemText, identifyMods } from "./engine/parse.js";
-import { tierTables } from "./engine/pool.js";
+import { tierTables, modFamilies, baseChoices } from "./engine/pool.js";
 import { ITEMS, LABELS } from "./samples.js";
 
 const DATA_DIR = new URL("../data/", import.meta.url).href;
@@ -25,6 +25,7 @@ async function init() {
       ? `League mechanic (${lg.league} ${lg.mechanic}): ${lg.crafts.length} craft${lg.crafts.length > 1 ? "s" : ""} included, approximate.`
       : `League mechanic (${lg.league} ${lg.mechanic}): not modelled yet; its crafting rules haven't been checked.`;
     $("readBtn").disabled = false;
+    setupBuilder();
     loadPrices();
   } catch (e) {
     $("meta").textContent = "Couldn't load game data.";
@@ -74,6 +75,82 @@ function readItem() {
     return { m, want: !m.fractured, minModId: m.mod.id, family: info ? families.get(info.family) : null };
   });
   current = { item, rows, unknown: ident.unknown };
+  renderItem();
+}
+
+// ---------------------------------------------------------------- manual item builder
+const INFLUENCE_NAMES = ["shaper", "elder", "crusader", "hunter", "redeemer", "warlord"];
+const builder = { base: null, families: [], picked: [] }; // picked: [{family, fractured}]
+
+function setupBuilder() {
+  const choices = baseChoices(db);
+  const byLabel = new Map(choices.map((c) => [c.label, c.base]));
+  $("bBaseList").innerHTML = choices.map((c) => `<option value="${esc(c.label)}">`).join("");
+  $("bInfl").insertAdjacentHTML("beforeend", INFLUENCE_NAMES.map((i) => `<label><input type="checkbox" value="${i}"> ${cap(i)}</label>`).join(""));
+  const refreshMods = () => {
+    const infl = [...$("bInfl").querySelectorAll("input:checked")].map((x) => x.value);
+    builder.families = builder.base ? modFamilies(db, builder.base, infl) : [];
+    $("bModList").innerHTML = builder.families.map((f) => `<option value="${esc(f.label)}">`).join("");
+    $("bMod").disabled = !builder.base;
+    // influence mods that no longer fit are dropped
+    builder.picked = builder.picked.filter((p) => builder.families.some((f) => f.key === p.family.key));
+    drawPicked();
+  };
+  $("bBase").addEventListener("change", () => {
+    const b = byLabel.get($("bBase").value) || null;
+    if (b !== builder.base) builder.picked = [];
+    builder.base = b;
+    $("bMsg").textContent = b ? "" : "Pick a base from the list.";
+    refreshMods();
+  });
+  $("bInfl").addEventListener("change", (e) => {
+    const on = [...$("bInfl").querySelectorAll("input:checked")];
+    if (on.length > 2) e.target.checked = false;
+    refreshMods();
+  });
+  $("bMod").addEventListener("change", () => {
+    const f = builder.families.find((x) => x.label === $("bMod").value);
+    if (!f) return;
+    $("bMod").value = "";
+    const sideCount = builder.picked.filter((p) => p.family.side === f.side).length;
+    const groups = new Set(builder.picked.flatMap((p) => p.family.mods[0].gr));
+    if (f.mods[0].gr.some((g) => groups.has(g))) { $("bMsg").textContent = "That mod's group is already on the item."; return; }
+    if (sideCount >= (builder.base.cls === "Jewel" ? 2 : 3)) { $("bMsg").textContent = `No free ${f.side === "p" ? "prefix" : "suffix"} left.`; return; }
+    builder.picked.push({ family: f, fractured: false });
+    $("bMsg").textContent = "";
+    drawPicked();
+  });
+  $("bUse").addEventListener("click", useBuiltItem);
+}
+
+function drawPicked() {
+  const ul = $("bMods");
+  ul.innerHTML = builder.picked.map((p, i) => `<li><span class="side ${p.family.side}">${p.family.side === "p" ? "PREFIX" : "SUFFIX"}</span>
+    <span class="text">${esc(p.family.label.replace(/^(Prefix|Suffix) · /, ""))}</span>
+    <label class="frac"><input type="checkbox" data-i="${i}" ${p.fractured ? "checked" : ""}> fractured</label>
+    <button type="button" class="link" data-del="${i}" aria-label="Remove this mod">remove</button></li>`).join("");
+  ul.querySelectorAll("input[type=checkbox]").forEach((cb) => cb.addEventListener("change", () => { builder.picked[+cb.dataset.i].fractured = cb.checked; }));
+  ul.querySelectorAll("button[data-del]").forEach((b) => b.addEventListener("click", () => { builder.picked.splice(+b.dataset.del, 1); drawPicked(); }));
+  $("bUse").disabled = !builder.base || !builder.picked.length;
+}
+
+function useBuiltItem() {
+  const base = builder.base;
+  if (!base) return;
+  const ilvl = Math.max(1, Math.min(100, parseInt($("bIlvl").value, 10) || 84));
+  const influences = [...$("bInfl").querySelectorAll("input:checked")].map((x) => x.value);
+  const item = { base, ilvl, influences, rarity: "rare", name: "Your item", flags: new Set(), eldritch: null, advanced: false, built: true };
+  const rows = builder.picked.map((p) => {
+    const mod = p.family.mods[0];
+    const m = {
+      mod, lines: [mod.x.replace(/\n/g, " / ")], side: mod.g, crafted: false, fractured: p.fractured,
+      tier: 1, tierCount: p.family.mods.length, essenceOnly: !!mod.e, unveiled: mod.d === "u",
+    };
+    return { m, want: !p.fractured, minModId: mod.id, family: p.family.mods.length > 1 ? p.family.mods : null };
+  });
+  current = { item, rows, unknown: [] };
+  showMsg("parseMsg", "");
+  $("resultPanel").hidden = true;
   renderItem();
 }
 

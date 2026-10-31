@@ -696,6 +696,23 @@ test("every planned method has at least one step after getting the base", async 
   }
 });
 
+// ------------------------------------------------------------------ manual builder helpers
+test("builder lists: unique base labels, mod families best tier first, influence and unveiled families", async () => {
+  const { modFamilies, baseChoices } = await import("../public/js/engine/pool.js");
+  const bc = baseChoices(db);
+  eq(bc.length, db.bases.length);
+  eq(new Set(bc.map((x) => x.label)).size, bc.length, "labels are unique");
+  ok(bc.filter((x) => x.label.startsWith("Two-Stone Ring (")).length >= 3, "variants told apart by implicit");
+  const ring = db.basesByName.get("Two-Stone Ring")[0];
+  const plain = modFamilies(db, ring, []), shaper = modFamilies(db, ring, ["shaper"]);
+  ok(shaper.length > plain.length, "influence adds families");
+  eq(new Set(plain.map((f) => f.label)).size, plain.length);
+  const life = plain.find((f) => /^Prefix · \+\(\d+-\d+\) to maximum Life$/.test(f.label));
+  ok(life && life.mods.every((m, i, a) => i === 0 || a[i - 1].l >= m.l), "best tier first");
+  ok(plain.some((f) => /\(unveiled\)$/.test(f.label) && f.mods[0].d === "u"));
+  ok(plain.findIndex((f) => f.side === "s") > plain.findLastIndex((f) => f.side === "p"), "prefixes then suffixes");
+});
+
 // ------------------------------------------------------------------ prices
 test("prices: fetch script on saved poe.ninja responses, and cost per method", async () => {
   const { execFileSync } = await import("node:child_process");

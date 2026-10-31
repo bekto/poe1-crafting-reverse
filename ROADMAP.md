@@ -37,7 +37,8 @@ Work top to bottom. Each item is done when its acceptance check passes, the test
 ## Phase 3: cost and usability
 - [x] **Prices.** A GitHub Action fetches poe.ninja hourly into `public/data/prices.json`. Show expected cost in Chaos and Divine Orbs per method, and rank by expected cost (keep "rank by chance" as a toggle).
   - Notes: `tools/fetch_prices.py` + `.github/workflows/prices.yml` (hourly, descriptive UA), tested on saved responses in `test/fixtures/`; `engine/cost.js` gives each method's expected currency use; the UI shows chaos/divine and a rank toggle. poe.ninja isn't reachable from this environment, so no live prices.json is committed (the Action creates it).
-- [ ] **Manual item builder.** Pick a base, an item level and mods from searchable lists, for when you have no item text.
+- [x] **Manual item builder.** Pick a base, an item level and mods from searchable lists, for when you have no item text.
+  - Notes: collapsible builder under the paste box (datalist search for bases and mod families, influences, fractured flag, slot/group checks); engine helpers `baseChoices`/`modFamilies` in pool.js; `browser.cjs builder` drives it end to end and now fails on any error.
 - [ ] **Shareable links.** Encode the base, item level and targets in `location.hash` (a plain `#` name format that the host allows; see the README).
 - [ ] **Mobile layout pass and accessibility check** (keyboard navigation, labels, contrast).
 - [ ] **Performance.** Keep plans under 5 seconds on a mid-range laptop. Consider a Rust/WebAssembly engine only if needed.

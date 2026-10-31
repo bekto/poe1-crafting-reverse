@@ -113,3 +113,43 @@ export function craftReserve(crafts, missing, multimodSide = "s", extra = null) 
 export function unveiledPool(db, base, influences, ilvl) {
   return basePool(db, base, influences, ilvl, { unveiled: true }).filter((e) => e.mod.d === "u");
 }
+
+/**
+ * Mod families that can roll on a base, for picking mods by hand: [{key, side, label, mods}] with mods best tier
+ * first. label is the best tier's text on one line, prefixed by the side.
+ */
+export function modFamilies(db, base, influences = []) {
+  const { families } = tierTables(db, base, influences);
+  const out = [];
+  for (const [key, mods] of families) {
+    const top = mods[0];
+    out.push({ key, side: top.g, mods, label: `${top.g === "p" ? "Prefix" : "Suffix"} · ${top.x.replace(/\n/g, " / ")}` });
+  }
+  // unveiled mods (from Jun), one family per mod group
+  const unv = new Map();
+  for (const { mod } of unveiledPool(db, base, influences, null)) {
+    const k = "u:" + mod.g + ":" + mod.gr.join(",") + ":" + mod.x;
+    if (!unv.has(k)) unv.set(k, []);
+    unv.get(k).push(mod);
+  }
+  for (const [key, mods] of unv) out.push({ key, side: mods[0].g, mods, label: `${mods[0].g === "p" ? "Prefix" : "Suffix"} · ${mods[0].x.replace(/\n/g, " / ")} (unveiled)` });
+  // labels must be unique for the search box
+  const seen = new Map();
+  for (const f of out) { const n = seen.get(f.label) || 0; seen.set(f.label, n + 1); if (n) f.label += ` (${n + 1})`; }
+  return out.sort((a, b) => (a.side === b.side ? a.label.localeCompare(b.label) : a.side === "p" ? -1 : 1));
+}
+
+/** One entry per base for picking by hand; bases that share a name are told apart by their implicit. */
+export function baseChoices(db) {
+  const out = [];
+  for (const [name, variants] of db.basesByName) {
+    for (const b of variants) {
+      const im = variants.length > 1 ? db.implicits.find((x) => x.id === b.implicits[0]) : null;
+      out.push({ base: b, label: `${name}${im ? ` (${im.x.replace(/\n/g, " / ")})` : variants.length > 1 ? ` (${b.id.split("/").pop()})` : ""} · ${db.classes[b.cls].name}` });
+    }
+  }
+  const count = new Map();
+  for (const o of out) count.set(o.label, (count.get(o.label) || 0) + 1);
+  for (const o of out) if (count.get(o.label) > 1) o.label += ` [${o.base.id.split("/").pop()}]`;
+  return out.sort((a, b) => a.label.localeCompare(b.label));
+}

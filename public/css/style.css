@@ -115,3 +115,14 @@ input[type=number] { width: 5.5rem; }
 .rank { border: 1px solid var(--line); border-radius: var(--radius); padding: .4rem .8rem; margin: .6rem 0; display: flex; gap: 1rem; align-items: center; }
 .rank legend { color: var(--muted); font-size: .85rem; padding: 0 .3rem; }
 .odds .cost { display: block; color: var(--gold-2); }
+.builder { margin-top: 1rem; border-top: 1px solid var(--line); padding-top: .8rem; }
+.builder summary { cursor: pointer; color: var(--gold); }
+.builder-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: .6rem 1rem; margin: .8rem 0; align-items: end; }
+.builder-grid label { display: flex; flex-direction: column; gap: .25rem; font-size: .9rem; color: var(--muted); }
+.builder-grid input[type=number], .builder-grid input[list] { width: 100%; }
+.infl-pick { border: 1px solid var(--line); border-radius: var(--radius); display: flex; flex-wrap: wrap; gap: .3rem .8rem; padding: .3rem .6rem; }
+.infl-pick label { flex-direction: row; align-items: center; }
+.bmods { list-style: none; padding: 0; margin: 0 0 .6rem; display: grid; gap: .3rem; }
+.bmods li { display: flex; gap: .6rem; align-items: center; background: var(--panel-2); border-radius: 6px; padding: .3rem .6rem; }
+.bmods .text { flex: 1; }
+.link { background: none; border: none; color: var(--gold); cursor: pointer; text-decoration: underline; padding: 0; }
