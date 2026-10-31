@@ -16,6 +16,7 @@ export const LABELS = {
   summedplate: "Body armour, Ctrl+C with a summed life line",
   awakened: "Helmet with two influences (Crusader + Hunter)",
   eldritchboots: "Boots with eldritch implicits",
+  veiledamulet: "Amulet with an unveiled mod",
 };
 
 export const ITEMS = {
@@ -344,4 +345,18 @@ Nearby Enemies have -9% to Lightning Resistance
 --------
 Crusader Item
 Hunter Item`,
+veiledamulet: `Item Class: Amulets
+Rarity: Rare
+Rune Charm
+Onyx Amulet
+--------
+Item Level: 84
+--------
++12 to all Attributes (implicit)
+--------
++70 to maximum Life
++40% to Cold Resistance
++30% to Global Critical Strike Multiplier
++1 to Minimum Power Charges
+4% chance to gain a Power Charge on Kill`,
 };

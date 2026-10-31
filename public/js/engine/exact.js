@@ -260,13 +260,22 @@ export function exactReroll(ctx, entries, forced) {
     if (!u || st.removed.has(u)) return { p: 0 };
     needs.push({ u, q: u.sat[i] / u.w });
   }
+  // groups that must stay empty (e.g. for a mod that gets added later by unveiling)
+  const absent = [];
+  for (const g of ctx.absentGroups || []) {
+    if (forced.some((m) => m.gr.includes(g))) return { p: 0 };
+    const u = model.units.get(g);
+    if (!u || st.removed.has(u)) continue;
+    if (model.targetUnit.includes(u) || model.craftUnit.includes(u)) return null;
+    absent.push(u);
+  }
   // every open craft either rolls naturally with a good enough tier, or doesn't roll and gets a free slot
   const open = crafts.map((_, j) => j).filter((j) => !(st.craftHit & (1 << j)));
   const counts = ctx.counts;
   const ds = counts.map(([n]) => n - forced.length);
   let p = 0;
   for (let combo = 0; combo < 1 << open.length; combo++) {
-    const scNeeds = [...needs], excl = [];
+    const scNeeds = [...needs], excl = [...absent];
     let missing = 0, possible = true;
     open.forEach((j, k) => {
       const u = model.craftUnit[j];
@@ -491,4 +500,50 @@ function addRole(st, r, u, kind, model) {
     else s.craftBlocked |= 1 << j;
   });
   return s;
+}
+
+/**
+ * Chance that at least one of `choices` options, drawn by weight without repeating a mod group, meets target t.
+ * Used for unveiling (Jun offers three unveiled mods to choose from).
+ */
+export function choiceChance(entries, t, choices) {
+  const units = new Map();
+  for (const e of entries) {
+    if (!(e.w > 0)) continue;
+    const g = e.mod.gr[0] ?? e.mod.id;
+    if (!units.has(g)) units.set(g, { w: 0, sat: 0 });
+    const u = units.get(g);
+    u.w += e.w;
+    if (satisfies(e.mod, t)) u.sat += e.w;
+  }
+  // interchangeable groups: same weight and same share of good mods
+  const cls = new Map();
+  for (const u of units.values()) {
+    const key = u.w.toPrecision(12) + ":" + u.sat.toPrecision(12);
+    if (!cls.has(key)) cls.set(key, { w: u.w, miss: 1 - u.sat / u.w, m: 0 });
+    cls.get(key).m++;
+  }
+  const C = [...cls.values()];
+  const memo = new Map();
+  // P(none of the next k options is good | taken counts per class)
+  const none = (taken, k) => {
+    if (k === 0) return 1;
+    const key = taken.join(",") + "|" + k;
+    if (memo.has(key)) return memo.get(key);
+    let tot = 0;
+    C.forEach((c, i) => { tot += (c.m - taken[i]) * c.w; });
+    let p = 1;
+    if (tot > 0) {
+      p = 0;
+      C.forEach((c, i) => {
+        const left = c.m - taken[i];
+        if (!left || !(c.miss > 0)) return;
+        const next = [...taken]; next[i]++;
+        p += ((left * c.w) / tot) * c.miss * none(next, k - 1);
+      });
+    }
+    memo.set(key, p);
+    return p;
+  };
+  return 1 - none(C.map(() => 0), choices);
 }

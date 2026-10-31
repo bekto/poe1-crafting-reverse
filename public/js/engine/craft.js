@@ -1,7 +1,7 @@
 // Reverse-crafting planner for PoE 1: builds the targets, tries every covered method, and ranks them.
-import { basePool, itemTags, spawnWeight, maxAffixes, satisfies, makeTarget, benchOptionsFor, craftReserve } from "./pool.js";
-import { MAGIC_TWO_MOD_CHANCE, rareModCounts, LOCKED_REROLL_MIN_NEW } from "./assumptions.js";
-import { exactReroll, exactAltRegal, exactRerollFirstFrom } from "./exact.js";
+import { basePool, itemTags, spawnWeight, maxAffixes, satisfies, makeTarget, benchOptionsFor, craftReserve, unveiledPool } from "./pool.js";
+import { MAGIC_TWO_MOD_CHANCE, rareModCounts, LOCKED_REROLL_MIN_NEW, VEILED_PREFIX_CHANCE, UNVEIL_CHOICES } from "./assumptions.js";
+import { exactReroll, exactAltRegal, exactRerollFirstFrom, choiceChance } from "./exact.js";
 import {
   mulberry32, CompiledPool, State, addRandom, success, blockedCrafts, fixedInfo, simulateReroll,
   stats, exactStats, targetMask, BLOCK_BITS,
@@ -55,6 +55,7 @@ export function buildContext(db, base, ilvl, influences, wanted, fixed = [], opt
     noExact: !!opts.noExact,
     prices: opts.prices || null,
     eldritch: opts.eldritch || null, // the item's eldritch implicits as parsed ({dominant})
+    absentGroups: opts.absentGroups || null, // mod groups the roll must leave empty
   };
 }
 
@@ -542,6 +543,55 @@ function eldritchExaltVariant(ctx) {
   return kind ? { eldritch: kind, onlySide: side } : null;
 }
 
+// ---------------------------------------------------------------- veiled mods
+
+/**
+ * One wanted unveiled mod: a Veiled Chaos Orb (reroll with a veiled mod, then unveil at Jun and pick it from the
+ * options), or Aisling on an item that already has the rest (removes a random mod, adds a veiled one).
+ */
+function veiledMethods(ctx, trials, wanted) {
+  const veiled = ctx.hard.filter((t) => t.wantedMod.d === "u");
+  if (veiled.length !== 1) return [];
+  const U = veiled[0], Z = U.side;
+  const uPool = unveiledPool(ctx.db, ctx.base, ctx.influences, ctx.ilvl).filter((e) => e.mod.g === Z);
+  const pU = choiceChance(uPool, U, UNVEIL_CHOICES);
+  if (!(pU > 0)) return [];
+  const rest = wanted.filter((w) => w.mod !== U.wantedMod);
+  const fixed = ctx.fixedEntries.map((e) => e.mod);
+  const opts = { noExact: ctx.noExact, prices: ctx.prices, absentGroups: U.groups, craftMods: ctx.crafts.map((c) => c.wantedMod) };
+  const ctxV = buildContext(ctx.db, ctx.base, ctx.ilvl, ctx.influences, rest, fixed, opts);
+  const out = [];
+  // Veiled Chaos Orb: the veiled mod takes one slot on its side; the rest is a normal roll
+  const placeholder = { id: `__veiled_${Z}`, n: "Veiled", g: Z, gr: [`__Veiled_${Z}`], st: [], stKey: "", t: [], sw: [], x: Z === "p" ? "Veiled prefix" : "Veiled suffix" };
+  const sideChance = Z === "p" ? VEILED_PREFIX_CHANCE : 1 - VEILED_PREFIX_CHANCE;
+  const r = rerollOdds(ctxV, ctxV.pool, [placeholder], trials, 919);
+  delete r.rerun;
+  const pv = sideChance * r.p * pU;
+  out.push({
+    kind: "veiledChaos", name: "Veiled Chaos Orb, then unveil", ctx: ctxV, target: U, pU, pRest: r.p, sideChance,
+    ...(r.exact ? exactStats(pv) : stats(Math.round(pv * (r.trials || 1)), r.trials || 1)), p: pv,
+    exact: !!r.exact, currency: [["Veiled Chaos Orb", 1]],
+  });
+  // Aisling: needs a finished item without bench crafts; assumes it is full, so the veiled mod lands where a mod was removed
+  if (!ctxV.crafts.length && !fixed.length) {
+    const stage1 = rerollMethods(ctxV, Math.floor(trials / 2)).filter((m) => m.p > 0).sort((a, b) => b.p - a.p)[0];
+    if (stage1) {
+      delete stage1.rerun;
+      const caps = ctx.caps;
+      const junkZ = caps[Z] - ctxV.hard.filter((t) => t.side === Z).length;
+      const pA = (junkZ / (caps.p + caps.s)) * pU;
+      if (pA > 0) {
+        out.push({
+          kind: "aisling", name: `${stage1.name}, then Aisling`, ctx: ctxV, stage1, stage1Ctx: ctxV, target: U, pU, pA, junkZ,
+          p1: stage1.p, p2: pA, p: stage1.p * pA, exact: !!stage1.exact, hits: stage1.hits ?? null, trials: stage1.trials ?? null,
+          expected: 1 / (stage1.p * pA), n90: null, currency: [...stage1.currency, ["Aisling (Betrayal safehouse)", 1]],
+        });
+      }
+    }
+  }
+  return out;
+}
+
 function pickCrafts(wanted, crafts) {
   return wanted.filter((w) => crafts.some((t) => t.wantedMod === w.mod));
 }
@@ -568,7 +618,7 @@ export function planCraft(db, base, ilvl, influences, wanted, fixed = [], opts =
     if (m && ar && m.p > ar.p) methods.push(m);
   }
   methods.push(...lockMethods(ctx, trials, wanted));
-  methods.push(...influenceExaltMethods(ctx, trials, wanted), ...awakenerMethods(ctx, trials, wanted));
+  methods.push(...influenceExaltMethods(ctx, trials, wanted), ...awakenerMethods(ctx, trials, wanted), ...veiledMethods(ctx, trials, wanted));
   for (const m of methods) m.ctx = m.ctx || ctx;
 
   // with two or more bench-able mods: the same methods with multimod and two bench crafts
@@ -587,6 +637,9 @@ export function planCraft(db, base, ilvl, influences, wanted, fixed = [], opts =
     }
   }
   refine(methods, opts.refineMs ?? 8000);
+  // derived plans that can't work are noise; the basic methods stay so the user sees they were checked
+  const basic = new Set(["chaos", "essence", "fossil", "altregal", "harvest"]);
+  for (let i = methods.length - 1; i >= 0; i--) if (!basic.has(methods[i].kind) && !(methods[i].p > 0)) methods.splice(i, 1);
   methods.sort((a, b) => b.p - a.p);
   for (const m of methods) {
     m.steps = buildSteps(m.ctx, m);

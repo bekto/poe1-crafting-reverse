@@ -25,7 +25,8 @@ Work top to bottom. Each item is done when its acceptance check passes, the test
   - Notes: influenced Exalted Orb as stage 2 after rolling the rest on an uninfluenced base; Awakener plan (one influenced exalt per base, then awaken; rest from the awakened roll, exact when small). New two-influence sample. Influence of a mod is read from its spawn tags.
 - [x] **Eldritch currency.** Eldritch implicits (Exarch/Eater), Eldritch Chaos, Exalted and Annulment orbs (prefix/suffix by dominance), and Orbs of Conflict. Requires parsing eldritch implicits.
   - Notes: build_data exports eldritch implicits (rank from the id); the parser reads them from Ctrl+C and Ctrl+Alt+C and works out dominance. New methods: Eldritch Chaos two-stage, Eldritch Exalt alteration route (brute-force checked); Conflict and Ember/Ichor in the steps. Eldritch Annulment isn't planned (see DECISIONS).
-- [ ] **Veiled mods.** Aisling slams and Veiled Chaos Orbs, using the `unveiled` mod domain.
+- [x] **Veiled mods.** Aisling slams and Veiled Chaos Orbs, using the `unveiled` mod domain.
+  - Notes: unveiled mods in the data and the parser; Veiled Chaos Orb (exact rest-of-roll with a placeholder veiled slot and the target's group kept empty) and Aisling (two stages). Unveil odds exact as "the target is among Jun's 3 options". Impossible derived plans are now dropped.
 - [ ] **Recombinators.** Mark this as advanced and approximate if the mechanics aren't fully known.
 - [ ] **Fractured bases in the alteration route** (currently skipped).
 - [ ] **League mechanic.** Add the current league's crafting mechanic (3.29 Allflame now, 3.30 after Nov 13) once its rules are documented. Write `public/data/manual/league.json`.

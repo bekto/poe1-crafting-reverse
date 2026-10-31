@@ -587,6 +587,33 @@ test("eldritch methods: Eldritch Chaos two-stage and Eldritch Exalted Orbs", asy
   ok(!rp.methods.some((m) => m.eldritch || m.block?.eldritch), "rings can't have eldritch implicits");
 });
 
+// ------------------------------------------------------------------ veiled
+test("choiceChance: one good group among n equal ones, k picks", async () => {
+  const { choiceChance } = await import("../public/js/engine/exact.js");
+  const mk = (i, good) => ({ mod: { id: `m${i}`, gr: [`g${i}`], st: [[good ? "x" : `y${i}`, 1, 1]], stKey: good ? "x" : `y${i}` }, w: 100 });
+  const entries = [mk(0, true), ...Array.from({ length: 9 }, (_, i) => mk(i + 1, false))];
+  const t = { stKey: "x", minStats: [["x", 1]] };
+  near(choiceChance(entries, t, 3), 3 / 10, 1e-12);
+  near(choiceChance(entries, t, 1), 1 / 10, 1e-12);
+  near(choiceChance(entries.slice(0, 2), t, 3), 1, 1e-12, "fewer options than picks");
+});
+
+test("unveiled mods are identified and get Veiled Chaos / Aisling plans", async () => {
+  const { planCraft } = await import("../public/js/engine/craft.js");
+  const { ITEMS } = await import("../public/js/samples.js");
+  const { item, ident } = parse(ITEMS.veiledamulet);
+  const u = ident.mods.find((m) => m.unveiled);
+  ok(u && /Minimum Power Charges/.test(u.mod.x), "unveiled mod found");
+  const want = [ident.mods[0], u].map((m) => ({ mod: m.mod, minMod: m.mod }));
+  const plan = planCraft(db, item.base, item.ilvl, [], want, [], { refineMs: 0 });
+  ok(plan.impossibleNaturally.some((m) => m.d === "u"), "flagged as not rollable");
+  const vc = plan.methods.find((m) => m.kind === "veiledChaos"), ai = plan.methods.find((m) => m.kind === "aisling");
+  ok(vc && vc.p > 0 && vc.p <= vc.pU && vc.exact, "Veiled Chaos Orb plan");
+  ok(ai && ai.p > 0 && ai.p2 <= ai.pU, "Aisling plan");
+  ok(plan.methods.filter((m) => m.kind === "chaos").every((m) => m.p === 0), "a Chaos Orb can't give it");
+  ok(!plan.methods.some((m) => m.kind === "lock" && m.p === 0), "impossible two-stage plans are dropped");
+});
+
 // ------------------------------------------------------------------ Harvest
 test("Harvest data is loaded from data/manual and its plans are marked approximate", async () => {
   const h = db.manual.harvest;

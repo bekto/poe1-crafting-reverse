@@ -173,7 +173,9 @@ function renderPlan(plan, ilvl) {
   const parts = [];
   if (plan.benchTarget) parts.push(`<strong>${esc(plan.benchTarget.option.mod.x.replace(/\n/g, " / "))}</strong> will be bench crafted at the end, so the random part doesn't need to hit it.`);
   if (plan.extraBenchable.length) parts.push(`${plan.extraBenchable.map((m) => `“${esc(m.x)}”`).join(", ")} can be bench crafted too. Plans marked “+ multimod” craft two mods with “Can have up to 3 Crafted Modifiers”; the others roll it.`);
-  if (plan.impossibleNaturally.length) parts.push(`${plan.impossibleNaturally.map((m) => `“${esc(m.x)}”`).join(", ")} can't roll naturally on this base at item level ${ilvl}; only an essence (or a higher item level) can give it.`);
+  const unveiled = plan.impossibleNaturally.filter((m) => m.d === "u"), normal = plan.impossibleNaturally.filter((m) => m.d !== "u");
+  if (unveiled.length) parts.push(`${unveiled.map((m) => `“${esc(m.x)}”`).join(", ")} is an unveiled mod: only the Veiled Chaos Orb and Aisling plans (or a bench craft, if you have unlocked it) can give it.`);
+  if (normal.length) parts.push(`${normal.map((m) => `“${esc(m.x)}”`).join(", ")} can't roll naturally on this base at item level ${ilvl}; only an essence (or a higher item level) can give it.`);
   if (ilvl < plan.minIlvl) parts.push(`Your item level (${ilvl}) is below ${plan.minIlvl}, which the chosen tiers need.`);
   parts.push(`Ranked by chance per try (two-stage methods by total tries). A method with lower odds can still be cheaper if its currency is cheap — for example Alterations versus Deafening Essences, or a metacraft that costs Divine Orbs on every try.`);
   $("planSummary").innerHTML = `<p class="summary">${parts.join(" ")}</p>`;
@@ -200,7 +202,7 @@ function renderPlan(plan, ilvl) {
     const kind = {
       chaos: "Chaos spam", essence: "Essence", fossil: "Fossils", harvest: "Harvest reforge",
       altregal: m.eldritch ? "Alteration route with eldritch exalts" : m.block ? "Alteration route with a metacraft" : "Alteration route · cheap currency, many tries",
-      influenceExalt: "Influenced Exalted Orb", awakener: "Awakener's Orb · two influences",
+      influenceExalt: "Influenced Exalted Orb", veiledChaos: "Veiled Chaos Orb + unveil", aisling: "Aisling + unveil · two stages", awakener: "Awakener's Orb · two influences",
       lock: m.eldritch ? "Two stages · Eldritch Chaos rerolls one side" : m.harvestKeep ? "Two stages · Harvest rerolls one side" : "Metacraft · two stages, each stage-2 try needs a new lock craft",
     }[m.kind] + (m.multimod ? " · multimod" : "") + (m.approximate ? " · Harvest data is hand-written" : "");
     d.innerHTML = `

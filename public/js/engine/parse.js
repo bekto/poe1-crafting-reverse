@@ -162,6 +162,7 @@ export function identifyMods(db, item) {
   const pool = basePool(db, base, item.influences, null, {
     allowEssenceOnly: true,
     extraMods: db.fossilAdded,
+    unveiled: true,
   }).map((x) => x.mod);
   const benchMods = (db.benchByClass.get(base.cls) || []).map((o) => o.mod).filter(Boolean);
   const { tierOf } = tierTables(db, base, item.influences);
@@ -176,6 +177,7 @@ export function identifyMods(db, item) {
     tier: tierOf.get(mod.id)?.tier ?? null,
     tierCount: tierOf.get(mod.id)?.of ?? null,
     essenceOnly: !!mod.e,
+    unveiled: mod.d === "u",
   });
 
   // --- advanced (Ctrl+Alt+C) blocks: header gives side and mod name

@@ -10,7 +10,7 @@ export function runPlan(d, req) {
 }
 
 // Only send what the UI needs (mod objects carry compiled regexes)
-function slimMod(m) { return m ? { id: m.id, x: m.x, g: m.g, n: m.n, l: m.l } : null; }
+function slimMod(m) { return m ? { id: m.id, x: m.x, g: m.g, n: m.n, l: m.l, d: m.d } : null; }
 function slimPlan(p) {
   return {
     minIlvl: p.minIlvl,
@@ -22,7 +22,7 @@ function slimPlan(p) {
       kind: m.kind, name: m.name, p: m.p, hits: m.hits, trials: m.trials, upperBound: m.upperBound,
       expected: m.expected, n90: m.n90, exact: !!m.exact, currency: m.currency, steps: m.steps, corrupt: m.corrupt || false,
       p1: m.p1, p2: m.p2, multimod: !!m.multimod, approximate: !!m.approximate, harvestKeep: !!m.harvestKeep,
-      restartCurrency: m.restartCurrency || null, pA: m.pA, pB: m.pB, pRest: m.pRest, annul: m.annul ? { currency: m.annul.currency, maxAnnuls: m.annul.maxAnnuls, choice: m.annul.choice, cost: m.annul.cost, restartCost: m.annul.restartCost } : null, lockSide: m.lockSide || null, block: m.block ? m.block.tag || null : null, eldritch: m.eldritch || m.block?.eldritch || null,
+      restartCurrency: m.restartCurrency || null, pA: m.pA, pB: m.pB, pRest: m.pRest, pU: m.pU, annul: m.annul ? { currency: m.annul.currency, maxAnnuls: m.annul.maxAnnuls, choice: m.annul.choice, cost: m.annul.cost, restartCost: m.annul.restartCost } : null, lockSide: m.lockSide || null, block: m.block ? m.block.tag || null : null, eldritch: m.eldritch || m.block?.eldritch || null,
       crafts: (m.crafts || []).map((c) => ({ mod: slimMod(c.mod), option: { mod: slimMod(c.option.mod), cost: c.option.cost } })),
     })),
   };

@@ -29,14 +29,14 @@ export function maxAffixes(base, rarity = "rare") {
 
 /**
  * All mods that can roll on this base by normal means (chaos/alch/exalt), ignoring item level
- * when ilvl is null. Each entry: {mod, w}.
+ * when ilvl is null. Each entry: {mod, w}. opts.unveiled: only the mods a veiled mod can be unveiled into.
  */
 export function basePool(db, base, influences, ilvl = null, opts = {}) {
   const tags = itemTags(db, base, influences);
   const dom = base.dom || "i";
   const out = [];
   for (const mod of db.mods) {
-    if (mod.d !== dom || (mod.g !== "p" && mod.g !== "s")) continue;
+    if ((mod.d !== dom && !(opts.unveiled && mod.d === "u" && dom === "i")) || (mod.g !== "p" && mod.g !== "s")) continue;
     if (mod.e && !opts.allowEssenceOnly) continue;
     if (db.fossilAdded.has(mod.id) && !(opts.extraMods && opts.extraMods.has(mod.id))) continue;
     if (ilvl !== null && mod.l > ilvl) continue;
@@ -107,4 +107,9 @@ export function craftReserve(crafts, missing, multimodSide = "s", extra = null) 
   crafts.forEach((c, i) => { if (missing & (1 << i)) { r[c.side]++; n++; } });
   if (n >= 2) r[multimodSide]++;
   return r;
+}
+
+/** What a veiled mod can be unveiled into on this base, per side: [{mod, w}]. */
+export function unveiledPool(db, base, influences, ilvl) {
+  return basePool(db, base, influences, ilvl, { unveiled: true }).filter((e) => e.mod.d === "u");
 }

@@ -102,6 +102,10 @@ for mid, m in mods.items():
             continue
     elif dom == "crafted":
         pass  # filtered below to bench-reachable mods
+    elif dom == "unveiled":
+        # what a veiled mod can become when Jun unveils it; rolls like an item-domain mod
+        if not any(w["weight"] > 0 and w["tag"] in domain_tags.get("item", set()) for w in m.get("spawn_weights", [])):
+            continue
     else:
         continue
     keep[mid] = m
@@ -139,7 +143,7 @@ def compact_mod(mid, m):
         "id": mid,
         "n": m.get("name") or "",
         "g": "p" if m["generation_type"] == "prefix" else "s" if m["generation_type"] == "suffix" else m["generation_type"][0],
-        "d": m["domain"][0],  # i=item, m=misc (jewels), c=crafted
+        "d": m["domain"][0],  # i=item, m=misc (jewels), c=crafted, u=unveiled
         "l": m.get("required_level", 1),
         "gr": m.get("groups", []),
         "ty": m.get("type"),

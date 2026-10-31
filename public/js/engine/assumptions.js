@@ -19,3 +19,8 @@ export const LOCKED_REROLL_MIN_NEW = 1;
 
 // Awakener's Orb: the result keeps one influenced mod from each item and rolls the rest like a Chaos Orb, with the
 // mod count rolled as usual (RARE_COUNTS) and the two kept mods counting towards it.
+
+// Veiled Chaos Orb and Aisling: the veiled mod is a prefix or a suffix with equal chance (an estimate), and Jun
+// offers this many unveiled mods to choose from, drawn by weight without repeating a mod group.
+export const VEILED_PREFIX_CHANCE = 0.5;
+export const UNVEIL_CHOICES = 3;

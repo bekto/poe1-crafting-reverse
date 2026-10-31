@@ -136,6 +136,17 @@ export function buildSteps(ctx, m) {
       detail: `Adds ${m.influence} influence and one random ${m.influence} mod; ${pct(m.p2)} that it's ${t}. On a miss, start again from stage 1. Overall about ${fmtN(1 / m.p)} stage-1 tries and ${fmtN(1 / m.p2)} ${m.orb}s. Assumes the item has room on both sides, so the odds are on the safe side.`,
     });
   }
+  else if (m.kind === "veiledChaos") {
+    const t = `"${one(m.target.mod.x)}"`;
+    steps.push({ title: "Spam Veiled Chaos Orbs", detail: `Each one rerolls the item with a veiled mod. Keep it when the veiled mod is a ${sideName(m.target.side)} (assumed ${pct(m.sideChance)}) and the rest has ${targetList(ctx)} (${pct(m.pRest)}). Don't let a mod from the same group as ${t} roll: it would block the unveil.` });
+    steps.push({ title: `Unveil at Jun and pick ${t}`, detail: `Jun offers 3 mods to choose from; ${pct(m.pU)} that ${t} is one of them. Overall ${pct(m.p)} per Veiled Chaos Orb, about ${fmtN(1 / m.p)} orbs.` });
+  } else if (m.kind === "aisling") {
+    const t = `"${one(m.target.mod.x)}"`;
+    const s1 = rerollSteps(ctx, m.stage1, `${pct(m.p1)} per try (about ${fmtN(1 / m.p1)} tries).`);
+    s1[0].title = `Stage 1 — ${s1[0].title}`;
+    steps.push(...s1);
+    steps.push({ title: "Stage 2 — Aisling (Research, Betrayal safehouse)", detail: `Removes a random mod and adds a veiled one. Assuming the item is full, the veiled mod lands on the side the removed mod came from, so it works when the removed mod is one of the ${m.junkZ} unwanted ${sideName(m.target.side)}es. Then unveil at Jun: ${pct(m.pU)} that ${t} is one of the 3 options. ${pct(m.p2)} per Aisling; on a miss, start again from stage 1.` });
+  }
   const crafts = ctx.crafts;
   if (crafts.length > 1 && ctx.db.meta?.multimod) {
     const mm = ctx.db.meta.multimod;

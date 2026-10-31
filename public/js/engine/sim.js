@@ -48,6 +48,7 @@ export class CompiledPool {
     this.needMask = (1 << ctx.hard.length) - 1;
     this.allCrafts = (1 << ctx.crafts.length) - 1;
     this.craftGroups = ctx.crafts.map((c) => c.groups.map(ctx.gid));
+    this.absentGroups = (ctx.absentGroups || []).map(ctx.gid);
   }
 }
 
@@ -107,6 +108,7 @@ export function blockedCrafts(P, st) {
 /** Hard targets all rolled, and every missing bench craft has its slot (plus multimod when needed). */
 export function success(ctx, P, st, extraRoom = null) {
   if ((st.mask & P.needMask) !== P.needMask) return false;
+  if (P.absentGroups.length && st.has(P.absentGroups)) return false;
   const missing = P.allCrafts & ~st.craftMask;
   if (!missing && !ctx.reserve) return true;
   if (blockedCrafts(P, st) & missing) return false;
