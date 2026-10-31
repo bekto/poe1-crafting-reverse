@@ -48,4 +48,6 @@ Work top to bottom. Each item is done when its acceptance check passes, the test
 
 ## Phase 4: release
 - [ ] **3.30 data.** After November 13, once RePoE updates, rebuild `poe1.json`, run all tests and fix anything that broke.
-- [ ] **GitHub Pages deploy workflow** and a short user guide in the README.
+  - Notes: blocked by date. On 2026-10-31 RePoE is at 3.29.3.3, the version already built. Run the rebuild command from the README after the 3.30 launch, then fill in `data/manual/league.json` for the new mechanic.
+- [x] **GitHub Pages deploy workflow** and a short user guide in the README.
+  - Notes: `.github/workflows/pages.yml` tests then deploys `public/` on push to main and after each price update; README has "How to use it" and "Deploy" (Pages source = GitHub Actions). Not run here: the checkout has no GitHub remote.

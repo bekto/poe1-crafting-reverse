@@ -4,6 +4,19 @@ Paste an item and the app works out how to craft it: which method to use, the st
 
 Everything runs in the browser. It's a static site with no server.
 
+## How to use it
+
+1. **Paste the item.** In the game, hover the item and press <kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>C</kbd> (or <kbd>Ctrl</kbd>+<kbd>C</kbd>), then paste it into the box. It's read straight away. No item text? Open "Build the item by hand" and pick the base and mods from lists.
+2. **Choose what you need.** Untick mods you don't care about and lower the tier where a weaker roll is fine; each relaxed tier makes the craft cheaper. Check the item level of the base you'll use.
+3. **Find crafting plans.** Each plan shows the steps in order, the odds ("exact", "approximate", or a simulated estimate) and, when prices are available, the expected cost in Chaos and Divine Orbs. Plans are ranked by cost (or by chance, with the toggle). Open a plan to read its steps.
+4. **Share it.** "Copy link to this plan" gives a link that opens the same item and plan.
+
+The tool only gives advice. It never sends input to the game or reads game memory.
+
+## Deploy
+
+`.github/workflows/pages.yml` runs the Node tests and publishes `public/` to GitHub Pages on every push to `main`, and again after each hourly price update. To turn it on: repository Settings → Pages → Source: "GitHub Actions". The price workflow needs "Read and write permissions" for `GITHUB_TOKEN` (Settings → Actions → General) so it can commit `prices.json`.
+
 ## Run it locally
 
 ```bash
