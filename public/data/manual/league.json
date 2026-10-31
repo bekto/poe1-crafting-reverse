@@ -1,0 +1,13 @@
+{
+  "_comment": [
+    "The current league's crafting mechanic. Fill in 'crafts' once the rules are documented (patch notes or the PoE wiki), with a source for each.",
+    "Supported craft types (they reuse the engine's reforge models):",
+    "  {\"type\": \"tagReforge\", \"name\": \"...\", \"text\": \"in-game wording\", \"tag\": \"<mod tag>\", \"moreCommonMultiplier\": 10, \"source\": \"...\"}  - reroll whose first mod has the tag, the tag's mods more common for the rest",
+    "  {\"type\": \"keepSide\", \"name\": \"...\", \"text\": \"...\", \"keep\": \"p\" | \"s\", \"source\": \"...\"}  - reroll that keeps every prefix (or suffix), as the second stage of a two-stage plan",
+    "Status 3.29: the crafting rules of the league mechanic could not be checked from the build environment (no access to the patch notes or the wiki), so no crafts are listed and the app says the mechanic isn't modelled. 3.30 starts on November 13."
+  ],
+  "league": "3.29",
+  "mechanic": "Allflame",
+  "status": "not-modelled",
+  "crafts": []
+}

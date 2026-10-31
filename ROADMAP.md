@@ -31,7 +31,8 @@ Work top to bottom. Each item is done when its acceptance check passes, the test
   - Notes: `manual/recombinator.json` (community keep-count table, labelled approximate); the best split of up to 2+2 wanted mods over two magic inputs, with exact alteration odds for the inputs. Labelled "Advanced · approximate" in the UI.
 - [x] **Fractured bases in the alteration route** (currently skipped).
   - Notes: with one fractured mod, stage 1 alters only the open side (exact, brute-force checked; simulator and annul variant updated). Two fractured mods still skip the route (nothing left to alter on a magic item).
-- [ ] **League mechanic.** Add the current league's crafting mechanic (3.29 Allflame now, 3.30 after Nov 13) once its rules are documented. Write `public/data/manual/league.json`.
+- [x] **League mechanic.** Add the current league's crafting mechanic (3.29 Allflame now, 3.30 after Nov 13) once its rules are documented. Write `public/data/manual/league.json`.
+  - Notes: `league.json` and a planner hook (tagReforge / keepSide crafts reuse the reforge engine, unit-tested with an injected craft). No 3.29 crafts are listed, because the rules couldn't be verified from here; the page says "not modelled yet". Fill it in for 3.30.
 
 ## Phase 3: cost and usability
 - [ ] **Prices.** A GitHub Action fetches poe.ninja hourly into `public/data/prices.json`. Show expected cost in Chaos and Divine Orbs per method, and rank by expected cost (keep "rank by chance" as a toggle).

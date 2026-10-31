@@ -34,7 +34,7 @@ public/
   js/worker.js         runs the simulations in a background thread
   js/samples.js        example items
   data/poe1.json       game data built from RePoE
-  data/manual/         hand-written mechanics RePoE doesn't export (Harvest), with sources
+  data/manual/         hand-written mechanics RePoE doesn't export (Harvest, eldritch, recombinator, league), with sources
   js/engine/data.js    loads the data, compiles mod text into regexes
   js/engine/parse.js   parses Ctrl+C / Ctrl+Alt+C item text and identifies each mod and tier
   js/engine/pool.js    mod pools, spawn weights, tiers, bench options
@@ -63,6 +63,7 @@ The planner currently covers:
 - Eldritch currency (`public/data/manual/eldritch.json`): reads the Searing Exarch / Eater of Worlds implicits and which one is dominant; two-stage plans with Eldritch Chaos Orbs rerolling the dominant side; the alteration route with Eldritch Exalted Orbs when the missing mods are all on one side; Orbs of Conflict in the steps when the dominance is the wrong way round
 - Veiled mods (the `unveiled` mod domain): Veiled Chaos Orb then unveil, or Aisling on an item that has the rest, for one wanted unveiled mod; unveiling picks the mod from Jun's 3 options
 - Recombinators (advanced, approximate; `public/data/manual/recombinator.json`): up to 2 prefixes and 2 suffixes split over two magic items, then a Recombinator that has to keep every pooled mod
+- The league mechanic, from `public/data/manual/league.json` (tag reforges and keep-side reforges can be listed there). For 3.29 the file lists no crafts yet, because the rules couldn't be checked, and the page says so.
 - Bench crafts at the end: one, or two with "Can have up to 3 Crafted Modifiers" (shown as "+ multimod"), with a check that the free slots are left. Bench costs come from the game data.
 
 ### Assumptions to verify
@@ -88,7 +89,7 @@ These aren't in the game data. Each one is a named constant in `public/js/engine
 
 ### Not covered yet
 
-Harvest crafts other than reforges, Eldritch Annulment (not planned), beastcrafting, Aisling, the 3.29 Allflame mechanic, and prices from poe.ninja.
+Harvest crafts other than reforges, Eldritch Annulment (not planned), beastcrafting, Aisling, and prices from poe.ninja.
 
 ## Tests
 

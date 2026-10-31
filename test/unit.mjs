@@ -630,6 +630,25 @@ test("alteration route on a fractured base keeps the fractured mod", async () =>
   ok(ar.steps.some((s) => /fractured mod stays/.test(s.detail)));
 });
 
+// ------------------------------------------------------------------ league mechanic
+test("league.json hook: listed tag reforges become plans; none are listed for 3.29", async () => {
+  const { planCraft } = await import("../public/js/engine/craft.js");
+  const { ITEMS } = await import("../public/js/samples.js");
+  const lg = db.manual.league;
+  ok(lg && Array.isArray(lg.crafts));
+  eq(lg.crafts.length, 0, "3.29 rules not verified, so nothing is invented");
+  const { item, ident } = parse(ITEMS.ring);
+  const want = ident.mods.filter((_, i) => [0, 3].includes(i)).map((m) => ({ mod: m.mod, minMod: m.mod }));
+  const saved = lg.crafts;
+  lg.crafts = [{ type: "tagReforge", name: "Test reforge", text: "Test", tag: "life", moreCommonMultiplier: 5, source: "unit test" }];
+  try {
+    const plan = planCraft(db, item.base, item.ilvl, [], want, [], { refineMs: 0 });
+    const m = plan.methods.find((x) => x.league);
+    ok(m && m.p > 0 && m.approximate, "league craft planned");
+    ok(m.steps.some((s) => /league\.json/.test(s.detail)));
+  } finally { lg.crafts = saved; }
+});
+
 // ------------------------------------------------------------------ recombinator
 test("recombinator plan: two magic items, all pooled mods kept", async () => {
   const { planCraft } = await import("../public/js/engine/craft.js");

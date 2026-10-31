@@ -17,6 +17,10 @@ async function init() {
   try {
     db = await loadDb(async (path) => (await fetch(new URL(path, DATA_DIR))).json());
     $("meta").textContent = `Path of Exile 1 · game data ${db.version}`;
+    const lg = db.manual?.league;
+    if (lg) $("leagueNote").textContent = lg.crafts?.length
+      ? `League mechanic (${lg.league} ${lg.mechanic}): ${lg.crafts.length} craft${lg.crafts.length > 1 ? "s" : ""} included, approximate.`
+      : `League mechanic (${lg.league} ${lg.mechanic}): not modelled yet; its crafting rules haven't been checked.`;
     $("readBtn").disabled = false;
   } catch (e) {
     $("meta").textContent = "Couldn't load game data.";

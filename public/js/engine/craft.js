@@ -186,17 +186,21 @@ export function resonatorName(n) {
  */
 function harvestTagMethods(ctx, trials) {
   const h = ctx.db.manual?.harvest;
-  if (!h) return [];
+  const league = ctx.db.manual?.league;
+  const crafts = [
+    ...(h ? h.reforgeTag.map((r) => ({ ...r, mult: h.moreCommonMultiplier, approximate: !!h.approximate, label: `Harvest: reforge including a ${r.name} modifier`, text: h.reforgeTagText.replaceAll("{name}", r.name), currency: "Harvest lifeforce" })) : []),
+    // the league mechanic's reforges, when league.json lists any
+    ...(league?.crafts || []).filter((c) => c.type === "tagReforge").map((c) => ({ ...c, mult: c.moreCommonMultiplier ?? 10, approximate: true, label: `${league.mechanic}: ${c.name}`, league: true, currency: c.name })),
+  ];
   const wantedTags = new Set([...ctx.hard, ...ctx.crafts].flatMap((t) => t.mod.t));
   const out = [];
   let seed = 300;
-  for (const r of h.reforgeTag) {
+  for (const r of crafts) {
     if (!wantedTags.has(r.tag)) continue;
-    const entries = ctx.pool.map((e) => ({ mod: e.mod, w: e.mod.t.includes(r.tag) ? e.w * h.moreCommonMultiplier : e.w }));
+    const entries = ctx.pool.map((e) => ({ mod: e.mod, w: e.mod.t.includes(r.tag) ? e.w * r.mult : e.w }));
     const first = entries.filter((e) => e.mod.t.includes(r.tag));
     if (!first.length) continue;
-    const name = `Harvest: reforge including a ${r.name} modifier`;
-    const base = { kind: "harvest", name, harvest: r, approximate: !!h.approximate, text: h.reforgeTagText.replaceAll("{name}", r.name), currency: [["Harvest lifeforce", r.cost]] };
+    const base = { kind: "harvest", name: r.label, harvest: r, league: !!r.league, approximate: r.approximate, text: r.text, mult: r.mult, currency: [[r.currency, r.cost ?? null]] };
     const fixed = ctx.fixedEntries.map((e) => e.mod);
     const ex = ctx.noExact ? null : exactRerollFirstFrom(ctx, entries, first, fixed);
     if (ex) { out.push({ ...base, ...exactStats(ex.p) }); continue; }
@@ -396,6 +400,7 @@ function lockMethods(ctx, trials, wanted) {
   const lockers = [
     ...[["p", "lockPrefixes"], ["s", "lockSuffixes"]].filter(([, k]) => db.meta?.[k]).map(([L, k]) => ({ L, meta: db.meta[k] })),
     ...(h?.reforgeKeep || []).map((k) => ({ L: k.keep, harvest: k, approximate: !!h.approximate })),
+    ...(db.manual?.league?.crafts || []).filter((c) => c.type === "keepSide").map((c) => ({ L: c.keep, harvest: { ...c, cost: null }, approximate: true })),
     // Eldritch Chaos Orb with the other side's influence dominant
     ...(eldritchCapable(ctx) ? Object.entries(db.manual.eldritch.dominance).map(([kind, side]) => ({ L: side === "p" ? "s" : "p", eldritch: kind })) : []),
   ];

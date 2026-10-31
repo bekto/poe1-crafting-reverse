@@ -59,7 +59,8 @@ function rerollSteps(ctx, m, odds = oddsText(m)) {
     return [{ title: `Spam ${m.name}`, detail: `Every essence guarantees "${one(m.essenceMod.x)}" and rerolls the rest. Stop when it also has ${targetList(ctx, m.essenceMod)}. ${odds}${m.corrupt ? " This essence only comes from corrupting another essence with a Remnant of Corruption." : ""} Use an Orb of Scouring first if the item isn't normal or rare.` }];
   }
   if (m.kind === "harvest") {
-    return [{ title: `Horticrafting Station: "${m.text}"`, detail: `Repeat until the item has ${targetList(ctx)}. ${odds} Harvest odds are approximate: the game doesn't publish how much more common the ${m.harvest.name} mods get (assumed ×${ctx.db.manual.harvest.moreCommonMultiplier}). Lifeforce cost: ${m.harvest.cost ? fmtLifeforce(m.harvest.cost) : "see the Horticrafting Station"}.` }];
+    if (m.league) return [{ title: `${m.name}: "${m.text}"`, detail: `Repeat until the item has ${targetList(ctx)}. ${odds} League craft from data/manual/league.json (approximate; source: ${m.harvest.source || "not given"}).` }];
+    return [{ title: `Horticrafting Station: "${m.text}"`, detail: `Repeat until the item has ${targetList(ctx)}. ${odds} Harvest odds are approximate: the game doesn't publish how much more common the ${m.harvest.name} mods get (assumed ×${m.mult}). Lifeforce cost: ${m.harvest.cost ? fmtLifeforce(m.harvest.cost) : "see the Horticrafting Station"}.` }];
   }
   if (m.kind === "fossil") {
     return [{ title: `Fossil craft: ${m.name} in a ${resonatorName(m.fossils.length)}`, detail: `Effects: ${m.fossils.flatMap((f) => f.desc).join("; ")}. Keep rerolling until the item has ${targetList(ctx)}. ${odds}` }];
