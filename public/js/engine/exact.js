@@ -344,13 +344,15 @@ export function exactRerollFirstFrom(ctx, entries, first, forced) {
  * (Eldritch Exalted Orbs with the matching dominance).
  */
 export function exactAltRegal(ctx, s1, block = null) {
-  if (ctx.hard.length > MAX_EXACT_TARGETS || ctx.fixedEntries.length) return null;
+  if (ctx.hard.length > MAX_EXACT_TARGETS || ctx.fixedEntries.length > 1) return null;
   const model = buildUnits(ctx, ctx.pool, block?.tag || null);
   if (!model) return null;
+  const F = ctx.fixedEntries[0]?.mod || null; // a fractured mod: stays on the magic item and fills its side
   const crafts = ctx.crafts || [];
+  const fUnit = F ? model.units.get(F.gr[0]) || null : null;
   const units = [...model.units.values()];
   const W = { p: 0, s: 0 };
-  for (const u of units) W[u.side] += u.w;
+  for (const u of units) if (u !== fUnit) W[u.side] += u.w;
   const Wt = W.p + W.s;
   if (!(Wt > 0)) return null;
   const s1u = s1.map((x) => ({ i: x.i, u: model.targetUnit[x.i] }));
@@ -364,7 +366,13 @@ export function exactAltRegal(ctx, s1, block = null) {
   const starts = [];
   let augPerAlt = 0;
   const two = MAGIC_TWO_MOD_CHANCE, one = 1 - MAGIC_TWO_MOD_CHANCE;
-  if (s1u.length === 2) {
+  if (F) {
+    // fractured: alteration keeps F, adds one mod to the open side with an augmentation when needed
+    if (s1u.length !== 1 || s1u[0].u.side === F.g) return null;
+    const [B] = s1u;
+    starts.push({ p: sat(B) / W[B.u.side], mods: [{ fixed: F }, { u: B.u, kind: { target: B.i } }] });
+    augPerAlt = 1 - two;
+  } else if (s1u.length === 2) {
     const [A, B] = s1u;
     // both mods, in either order; with one mod the augmentation adds the other side, with the same odds
     const pAB = (sat(A) / Wt) * (sat(B) / W[B.u.side]) + (sat(B) / Wt) * (sat(A) / W[A.u.side]);
@@ -460,6 +468,7 @@ export function exactAltRegal(ctx, s1, block = null) {
   for (const s of starts) {
     let st = { c: classes.map(() => 0), roles: 0, n: { p: 0, s: 0 }, hit: ctx.hard.map(() => false), craftHit: 0, craftBlocked: 0, meta: false };
     for (const m of s.mods) {
+      if (m.fixed) { st = addFixed(st, m.fixed, fUnit, roles, classOf, ctx, model); continue; }
       const r = roles.indexOf(m.u);
       st = r >= 0 ? addRole(st, r, m.u, m.kind, model) : addPlain(st, classOf.get(m.u), m.u.side);
     }
@@ -481,6 +490,16 @@ function outcomes(model, u, filtered) {
   });
   if (rest > 1e-9 * u.w) out.push([null, rest]);
   return out;
+}
+
+// a fractured mod: takes its slot and its group (a worse roll of a bench craft's group blocks that craft)
+function addFixed(st, F, fUnit, roles, classOf, ctx, model) {
+  if (!fUnit) return { ...st, n: { ...st.n, [F.g]: st.n[F.g] + 1 } };
+  const r = roles.indexOf(fUnit);
+  if (r < 0) return addPlain(st, classOf.get(fUnit), F.g);
+  const j = model.craftUnit.indexOf(fUnit);
+  const kind = j >= 0 && satisfies(F, ctx.crafts[j]) ? { craft: j } : null;
+  return addRole(st, r, fUnit, kind, model);
 }
 
 function addPlain(st, i, side) {

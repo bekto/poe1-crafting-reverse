@@ -218,7 +218,9 @@ function rerollMethods(ctx, trials) {
 /** The stage-1 goal of the alteration route: the hardest prefix target and the hardest suffix target. */
 export function stageOneTargets(ctx) {
   const pick = (side) => ctx.hard.map((t, i) => ({ t, i })).filter((x) => x.t.side === side).sort((a, b) => a.t.naturalWeight - b.t.naturalWeight)[0];
-  return [pick("p"), pick("s")].filter(Boolean);
+  // a fractured mod fills its side of the magic item
+  const full = new Set((ctx.fixedEntries || []).map((e) => e.mod.g));
+  return [pick("p"), pick("s")].filter((x) => x && !full.has(x.t.side));
 }
 
 /**
@@ -227,8 +229,11 @@ export function stageOneTargets(ctx) {
  */
 function altRegalMethod(ctx, trials, block = null) {
   if (!ctx.hard.length) return null;
-  if (ctx.fixedEntries.length) return null; // fractured bases: rerolling to magic keeps the fractured mod, skip for now
+  // a fractured mod stays through alterations; with one fractured mod the magic item has one open side
+  const fixedMods = ctx.fixedEntries.map((e) => e.mod);
+  if (fixedMods.length > 1 || (fixedMods.length && !fixedMods.every((m) => m.g === "p" || m.g === "s"))) return null;
   const s1 = stageOneTargets(ctx);
+  if (!s1.length) return null;
   const ex = ctx.noExact ? null : exactAltRegal(ctx, s1, block);
   if (ex) return altRegalResult(ctx, s1, ex, true, block);
 
@@ -245,8 +250,16 @@ function altRegalMethod(ctx, trials, block = null) {
   const blockBit = block ? BLOCK_BITS[block.tag] : 0;
 
   let augs = 0;
+  const fixedInfos = fixedMods.map((m) => fixedInfo(ctx, m));
   const altRoll = () => {
     st.reset(magicMax);
+    if (fixedInfos.length) {
+      // fractured: the alteration keeps the fractured mod; augment when the open side comes out empty
+      for (const f of fixedInfos) st.add(f.side, f.groups, f.mask, f.craftMask);
+      if (rng() < MAGIC_TWO_MOD_CHANCE) addRandom(P, st, rng);
+      if (st.count === 1) { augs++; addRandom(P, st, rng); }
+      return (st.mask & s1Mask) === s1Mask;
+    }
     const n = rng() < MAGIC_TWO_MOD_CHANCE ? 2 : 1;
     for (let k = 0; k < n; k++) addRandom(P, st, rng);
     // augment if a needed side is still empty

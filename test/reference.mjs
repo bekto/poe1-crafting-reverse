@@ -118,7 +118,12 @@ export function bruteAltRegal(ctx, s1, block = null, twoModChance = 0.5) {
   // stage 1: list of [magic item, probability]
   const magic = [];
   let augs = 0;
-  for (const [m1, q1] of draws([], { p: 1, s: 1 })) {
+  const F = ctx.fixedEntries[0]?.mod;
+  if (F) {
+    // fractured: the alteration keeps F and the open side always ends up with one mod (augment if needed)
+    for (const [m2, q2] of draws([F], { p: 1, s: 1 })) magic.push([[F, m2], q2]);
+    augs = 1 - twoModChance;
+  } else for (const [m1, q1] of draws([], { p: 1, s: 1 })) {
     for (const [m2, q2] of draws([m1], { p: 1, s: 1 })) magic.push([[m1, m2], twoModChance * q1 * q2]);
     const partial = s1.some((x) => satisfies(m1, ctx.hard[x.i])) && !s1ok([m1]);
     const sides = new Set(s1.map((x) => ctx.hard[x.i].side));
@@ -275,6 +280,13 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     const block = { onlySide: missing[0]?.side || "p" };
     const ea = exactAltRegal(ctx, s1, block), ba = bruteAltRegal(ctx, s1, block);
     report(["p1", "p2", "avgExalts"].every((k) => relErr(ea[k], ba[k]) <= EXACT_TOLERANCE), `alteration route with one-side (eldritch) exalts ${ids.join(" + ")}: p2 ${ea.p2.toPrecision(6)} vs ${ba.p2.toPrecision(6)}`);
+  }
+  // fractured base: P4 tier 1 fractured
+  for (const ids of [["S1t2"], ["S1t2", "P3t2"], ["S3t2", "S1t1"], ["S1t2", "S2t1"]]) {
+    const ctx = buildContext(rich, rich.bases[0], 84, [], ids.map((id) => ({ mod: rich.modById.get(id), minMod: rich.modById.get(id) })), [rich.modById.get("P4t1")]);
+    const s1 = stageOneTargets(ctx);
+    const ea = exactAltRegal(ctx, s1), ba = bruteAltRegal(ctx, s1);
+    report(!!ea && ["p1", "p2", "avgExalts", "augPerAlt"].every((k) => relErr(ea[k], ba[k]) <= EXACT_TOLERANCE), `fractured alteration route ${ids.join(" + ")}: p1 ${ea?.p1.toPrecision(6)} vs ${ba.p1.toPrecision(6)}, p2 ${ea?.p2.toPrecision(6)} vs ${ba.p2.toPrecision(6)}`);
   }
   console.log("\nAnnul simulator with no annulments against the exact alteration route (tolerance 5%):");
   for (const ids of [["P2t2", "P3t1"], ["P2t2", "P3t1", "S2t1"], ["S1t2", "S3t2", "S2t1"]]) {

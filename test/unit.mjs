@@ -614,6 +614,22 @@ test("unveiled mods are identified and get Veiled Chaos / Aisling plans", async 
   ok(!plan.methods.some((m) => m.kind === "lock" && m.p === 0), "impossible two-stage plans are dropped");
 });
 
+// ------------------------------------------------------------------ fractured alteration route
+test("alteration route on a fractured base keeps the fractured mod", async () => {
+  const { planCraft } = await import("../public/js/engine/craft.js");
+  const { ITEMS } = await import("../public/js/samples.js");
+  const { item, ident } = parse(ITEMS.fractured);
+  const fixed = ident.mods.filter((m) => m.fractured).map((m) => m.mod);
+  eq(fixed.length, 1);
+  const want = ident.mods.filter((m, i) => !m.fractured && [1, 3].includes(i)).map((m) => ({ mod: m.mod, minMod: m.mod }));
+  const plan = planCraft(db, item.base, item.ilvl, [], want, fixed, { refineMs: 0 });
+  const ar = plan.methods.find((m) => m.kind === "altregal" && !m.block);
+  ok(ar && ar.exact && ar.p1 > 0 && ar.p2 > 0, "offered, exact");
+  eq(ar.stage1Targets.length, 1, "only the open side is altered");
+  ok(ar.stage1Targets[0].side !== fixed[0].g);
+  ok(ar.steps.some((s) => /fractured mod stays/.test(s.detail)));
+});
+
 // ------------------------------------------------------------------ recombinator
 test("recombinator plan: two magic items, all pooled mods kept", async () => {
   const { planCraft } = await import("../public/js/engine/craft.js");

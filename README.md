@@ -80,6 +80,7 @@ These aren't in the game data. Each one is a named constant in `public/js/engine
 - Eldritch Chaos Orbs reroll only the dominant side (Searing Exarch: prefixes, Eater of Worlds: suffixes), with the same mod-count rule as the side locks. Eldritch Exalted Orbs add only to the dominant side.
 - `VEILED_PREFIX_CHANCE`, `UNVEIL_CHOICES`: a Veiled Chaos Orb's veiled mod is a prefix or a suffix with equal chance, and unveiling offers 3 mods, drawn by weight with no repeated mod group. No mod from the wanted unveiled mod's group may be on the item. Aisling is modelled on a full item, so the veiled mod takes the side of the removed mod.
 - Recombinator: how many pooled mods per side the result keeps comes from a community-measured table. Exclusive mods and extra random mods aren't modelled. The input magic items must have only the wanted mods.
+- On a fractured base, an Alteration keeps the fractured mod, and the plan augments whenever the open side comes out empty. So stage 1 always ends with the fractured mod plus one mod on the other side. Fractured mods can't be annulled.
 - An Orb of Annulment removes one explicit mod chosen uniformly at random.
 - Each new mod is picked with chance proportional to its spawn weight, among the mods that are still allowed (no mod from a group already on the item, and a free prefix or suffix slot).
 

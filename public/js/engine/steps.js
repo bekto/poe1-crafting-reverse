@@ -84,7 +84,8 @@ export function buildSteps(ctx, m) {
   if (["chaos", "essence", "fossil"].includes(m.kind)) steps.push(...rerollSteps(ctx, m));
   else if (m.kind === "altregal") {
     const s1 = m.stage1Targets.map((t) => `"${one(t.wantedMod.x)}"`).join(" and ");
-    steps.push({ title: "Orb of Transmutation, then spam Orbs of Alteration", detail: `Goal: a magic item with ${s1}. Use an Orb of Augmentation when only one of them shows up and there's a free slot. ${pct(m.p1)} per alteration (about ${fmtN(1 / m.p1)} alterations, ${m.augPerAlt.toFixed(2)} augmentations per alteration).` });
+    const frac = ctx.fixedEntries.length ? " The fractured mod stays through every alteration, so only the other side changes; use an Orb of Augmentation whenever that side comes out empty." : " Use an Orb of Augmentation when only one of them shows up and there's a free slot.";
+    steps.push({ title: "Orb of Transmutation, then spam Orbs of Alteration", detail: `Goal: a magic item with ${s1}.${frac} ${pct(m.p1)} per alteration (about ${fmtN(1 / m.p1)} alterations, ${m.augPerAlt.toFixed(2)} augmentations per alteration).` });
     if (m.block?.eldritch) {
       const el = ctx.db.manual.eldritch, kind = m.block.eldritch;
       steps.splice(1, 0, eldritchSetupStep(ctx, kind));

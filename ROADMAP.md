@@ -29,7 +29,8 @@ Work top to bottom. Each item is done when its acceptance check passes, the test
   - Notes: unveiled mods in the data and the parser; Veiled Chaos Orb (exact rest-of-roll with a placeholder veiled slot and the target's group kept empty) and Aisling (two stages). Unveil odds exact as "the target is among Jun's 3 options". Impossible derived plans are now dropped.
 - [x] **Recombinators.** Mark this as advanced and approximate if the mechanics aren't fully known.
   - Notes: `manual/recombinator.json` (community keep-count table, labelled approximate); the best split of up to 2+2 wanted mods over two magic inputs, with exact alteration odds for the inputs. Labelled "Advanced · approximate" in the UI.
-- [ ] **Fractured bases in the alteration route** (currently skipped).
+- [x] **Fractured bases in the alteration route** (currently skipped).
+  - Notes: with one fractured mod, stage 1 alters only the open side (exact, brute-force checked; simulator and annul variant updated). Two fractured mods still skip the route (nothing left to alter on a magic item).
 - [ ] **League mechanic.** Add the current league's crafting mechanic (3.29 Allflame now, 3.30 after Nov 13) once its rules are documented. Write `public/data/manual/league.json`.
 
 ## Phase 3: cost and usability

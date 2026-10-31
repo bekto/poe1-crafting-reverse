@@ -15,7 +15,7 @@ export const ANNUL_LIMITS = [1, 2, 3];
  */
 export function simulateAnnulRoute(ctx, s1, maxAnnuls, runs = ANNUL_RUNS, seed = 4242) {
   const rng = mulberry32(seed);
-  const entries = ctx.pool.filter((e) => e.w > 0);
+  const entries = ctx.pool.filter((e) => e.w > 0 && !ctx.fixedEntries.some((f) => e.mod.gr.some((g) => f.mod.gr.includes(g))));
   const rare = maxAffixes(ctx.base);
   const crafts = ctx.crafts;
   const W = { p: 0, s: 0 };
@@ -33,7 +33,9 @@ export function simulateAnnulRoute(ctx, s1, maxAnnuls, runs = ANNUL_RUNS, seed =
     return list[list.length - 1].mod;
   };
   // a good magic item, drawn from its exact distribution given that stage 1 succeeded
+  const fixed = ctx.fixedEntries.map((e) => e.mod);
   const goodMagic = () => {
+    if (fixed.length) return [...fixed, pickFrom(satEntries[0])]; // fractured: the open side got the stage-1 mod
     if (s1.length === 2) return [pickFrom(satEntries[0]), pickFrom(satEntries[1])];
     const side = s1[0].t.side, os = side === "p" ? "s" : "p";
     const alone = (1 - MAGIC_TWO_MOD_CHANCE) * satW[0] / Wt;
@@ -77,8 +79,10 @@ export function simulateAnnulRoute(ctx, s1, maxAnnuls, runs = ANNUL_RUNS, seed =
       if (s.done) { finished++; break; }
       const m = s.canExalt ? draw(item) : null;
       if (m) { item.push(m); exalts++; continue; }
-      if (used >= maxAnnuls || !item.length) break;
-      item.splice(Math.floor(rng() * item.length), 1);
+      // fractured mods can't be annulled
+      const removable = item.filter((x) => !fixed.includes(x));
+      if (used >= maxAnnuls || !removable.length) break;
+      item.splice(item.indexOf(removable[Math.floor(rng() * removable.length)]), 1);
       annuls++; used++;
     }
   }
