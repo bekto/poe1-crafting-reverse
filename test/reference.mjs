@@ -6,7 +6,8 @@
 // 8/12, 3/12, 1/12; an alteration gives 2 mods half the time).
 import assert from "node:assert/strict";
 import { indexData } from "../public/js/engine/data.js";
-import { planCraft, buildContext } from "../public/js/engine/craft.js";
+import { planCraft, buildContext, stageOneTargets } from "../public/js/engine/craft.js";
+export { stageOneTargets };
 import { exactReroll, exactAltRegal } from "../public/js/engine/exact.js";
 import { RARE_COUNTS } from "../public/js/engine/assumptions.js";
 import { satisfies } from "../public/js/engine/pool.js";
@@ -38,17 +39,23 @@ export function syntheticDb({ prefixes = 6, suffixes = 6, weights = {} } = {}) {
  * A less symmetric made-up pool for checking the exact engine: 4 prefix and 4 suffix groups with 2 tiers each
  * and uneven weights, a bench craft in suffix group S2, and an essence mod in prefix group P4.
  */
+const ATTACK_GROUPS = ["P2", "S3", "S4"]; // mods tagged "attack" in the uneven pool
+
 export function richDb() {
   const W = { P1: [1000, 500], P2: [800, 200], P3: [300, 300], P4: [1500, 100], S1: [600, 600], S2: [1000, 250], S3: [400, 50], S4: [2000, 700] };
   const mods = [];
   for (const [g, ws] of Object.entries(W)) {
     ws.forEach((w, k) => mods.push({
-      id: `${g}t${k + 1}`, n: g, g: g[0].toLowerCase(), d: "i", l: 1, gr: [g], ty: g, t: [],
-      sw: [["default", w]], gw: [], st: [[`stat_${g}`, k + 1, k + 1]], x: `+${k + 1} to Stat ${g}`, e: 0,
+      id: `${g}t${k + 1}`, n: g, g: g[0].toLowerCase(), d: "i", l: 1, gr: [g], ty: g,
+      sw: [["default", w]], gw: [], st: [[`stat_${g}`, k + 1, k + 1]], x: `+${k + 1} to Stat ${g}`, e: 0, t: ATTACK_GROUPS.includes(g) ? ["attack"] : [],
     }));
   }
   mods.push({ id: "P4ess", n: "P4", g: "p", d: "i", l: 1, gr: ["P4"], ty: "P4", t: [], sw: [["default", 0]], gw: [], st: [["stat_P4", 3, 3]], x: "+3 to Stat P4", e: 1 });
-  mods.push({ id: "S2craft", n: "S2", g: "s", d: "c", l: 1, gr: ["S2"], ty: "S2", t: [], sw: [], gw: [], st: [["stat_S2", 1, 1]], x: "+1 to Stat S2", e: 0 });
+  const crafted = (id, g, gr, x, st = []) => ({ id, n: id, g, d: "c", l: 1, gr: [gr], ty: gr, t: [], sw: [], gw: [], st, x, e: 0 });
+  mods.push(crafted("S2craft", "s", "S2", "+1 to Stat S2", [["stat_S2", 1, 1]]));
+  mods.push(crafted("P1craft", "p", "P1", "+1 to Stat P1", [["stat_P1", 1, 1]]));
+  mods.push(crafted("Multimod", "s", "ItemGenerationCanHaveMultipleCraftedMods", "Can have up to 3 Crafted Modifiers"));
+  mods.push(crafted("NoAttack", "s", "ItemGenerationCannotRollAttackAffixes", "Cannot roll Attack Modifiers"));
   return indexData({
     version: "test",
     classes: { Ring: { name: "Rings", influence: {} } },
@@ -56,8 +63,23 @@ export function richDb() {
     mods, implicits: [],
     essences: [{ id: "TestEssence", name: "Deafening Essence of Testing", level: 7, corrupt: false, ilvl: null, mods: { Ring: "P4ess" } }],
     fossils: [],
-    bench: { S2craft: { classes: ["Ring"], cost: {}, tier: 1 } },
+    bench: Object.fromEntries(["S2craft", "P1craft", "Multimod", "NoAttack"].map((id) => [id, { classes: ["Ring"], cost: {}, tier: 1 }])),
   });
+}
+
+// Bench craft rule, written out separately from the engine: every craft that didn't roll needs its group free
+// and a free slot on its side; two or more missing crafts also need a suffix for multimod.
+function craftsOk(ctx, taken, caps, ignoreBlocked = false) {
+  const crafts = ctx.crafts || [];
+  const groupTaken = (c) => taken.some((m) => m.gr.some((g) => c.groups.includes(g)));
+  let missing = crafts.filter((c) => !taken.some((m) => satisfies(m, c)));
+  if (ignoreBlocked) missing = missing.filter((c) => !groupTaken(c));
+  else if (missing.some(groupTaken)) return { ok: false, need: { p: 9, s: 9 } };
+  const need = { p: ctx.reserve?.p || 0, s: ctx.reserve?.s || 0 };
+  for (const c of missing) need[c.side]++;
+  if (missing.length >= 2) need.s++;
+  const used = (sd) => taken.filter((m) => m.g === sd).length;
+  return { ok: used("p") + need.p <= caps.p && used("s") + need.s <= caps.s, need };
 }
 
 /**
@@ -65,12 +87,7 @@ export function richDb() {
  * (forced mods first, then mods by weight without repeating a group, until the item has n mods).
  */
 export function bruteReroll(ctx, entries, forced, counts, caps = { p: 3, s: 3 }) {
-  const ok = (taken) => {
-    for (const t of ctx.hard) if (!taken.some((m) => satisfies(m, t))) return false;
-    const b = ctx.benchTarget;
-    if (!b || taken.some((m) => satisfies(m, b))) return true;
-    return taken.filter((m) => m.g === b.side).length < caps[b.side] && !taken.some((m) => m.gr.some((g) => b.groups.includes(g)));
-  };
+  const ok = (taken) => ctx.hard.every((t) => taken.some((m) => satisfies(m, t))) && craftsOk(ctx, taken, caps).ok;
   const rec = (taken, n) => {
     if (taken.length >= n) return ok(taken) ? 1 : 0;
     const groups = new Set(taken.flatMap((m) => m.gr));
@@ -84,20 +101,18 @@ export function bruteReroll(ctx, entries, forced, counts, caps = { p: 3, s: 3 })
 }
 
 /** Brute force for the alteration route, with the same rules as altRegalMethod in craft.js. */
-export function bruteAltRegal(ctx, s1, twoModChance = 0.5) {
+export function bruteAltRegal(ctx, s1, block = null, twoModChance = 0.5) {
   const entries = ctx.pool.filter((e) => e.w > 0);
   const rare = { p: 3, s: 3 };
-  const draws = (taken, caps) => {
+  const draws = (taken, caps, blockTag = null) => {
     const groups = new Set(taken.flatMap((m) => m.gr));
-    const avail = entries.filter((e) => taken.filter((m) => m.g === e.mod.g).length < caps[e.mod.g] && !e.mod.gr.some((g) => groups.has(g)));
+    const avail = entries.filter((e) => taken.filter((m) => m.g === e.mod.g).length < caps[e.mod.g] && !e.mod.gr.some((g) => groups.has(g)) && !(blockTag && e.mod.t.includes(blockTag)));
     const tot = avail.reduce((a, e) => a + e.w, 0);
     return avail.map((e) => [e.mod, e.w / tot]);
   };
   const has = (taken, t) => taken.some((m) => satisfies(m, t));
   const s1ok = (taken) => s1.every((x) => has(taken, ctx.hard[x.i]));
-  const b = ctx.benchTarget;
-  const success = (taken) => ctx.hard.every((t) => has(taken, t)) &&
-    (!b || has(taken, b) || (taken.filter((m) => m.g === b.side).length < rare[b.side] && !taken.some((m) => m.gr.some((g) => b.groups.includes(g)))));
+  const success = (taken) => ctx.hard.every((t) => has(taken, t)) && craftsOk(ctx, taken, rare).ok;
   // stage 1: list of [magic item, probability]
   const magic = [];
   let augs = 0;
@@ -114,18 +129,27 @@ export function bruteAltRegal(ctx, s1, twoModChance = 0.5) {
   const good = magic.filter(([t]) => s1ok(t));
   const p1 = good.reduce((a, [, q]) => a + q, 0);
   let p2 = 0, exalts = 0;
-  const stage2 = (taken, q, used) => {
+  const stage2 = (taken, q, used, meta) => {
     if (success(taken)) { p2 += q; exalts += q * used; return; }
+    const capsNow = { ...rare };
+    if (meta) capsNow[block.side]--;
     const need = { p: 0, s: 0 };
     ctx.hard.forEach((t) => { if (!has(taken, t)) need[t.side]++; });
-    if (b && !has(taken, b) && !taken.some((m) => m.gr.some((g) => b.groups.includes(g)))) need[b.side]++;
-    const free = (sd) => rare[sd] - taken.filter((m) => m.g === sd).length;
-    if (need.p > free("p") || need.s > free("s") || taken.length >= 6) { exalts += q * used; return; }
-    const ds = draws(taken, rare);
+    const cn = craftsOk(ctx, taken, rare, true).need;
+    const free = (sd, caps) => caps[sd] - taken.filter((m) => m.g === sd).length;
+    if (need.p > free("p", capsNow) || need.s > free("s", capsNow) || need.p + cn.p > free("p", rare) || need.s + cn.s > free("s", rare) ||
+      free("p", capsNow) + free("s", capsNow) <= 0) { exalts += q * used; return; }
+    const ds = draws(taken, capsNow, meta ? block.tag : null);
     if (!ds.length) { exalts += q * used; return; }
-    for (const [m, r] of ds) stage2([...taken, m], q * r, used + 1);
+    for (const [m, r] of ds) stage2([...taken, m], q * r, used + 1, meta);
   };
-  for (const [t, q] of good) for (const [m, r] of draws(t, rare)) stage2([...t, m], (q / p1) * r, 0);
+  for (const [t, q] of good) {
+    for (const [m, r] of draws(t, rare)) {
+      const after = [...t, m];
+      const meta = !!block && after.filter((x) => x.g === block.side).length < rare[block.side];
+      stage2(after, (q / p1) * r, 0, meta);
+    }
+  }
   return { p1, p2, augPerAlt: augs, avgExalts: exalts };
 }
 
@@ -184,14 +208,12 @@ export const RICH_CASES = [
   [["P1t2", "S2t1"], []], [["P3t2", "S2t1"], []], [["S3t2", "S2t1"], []],
   [["P4t1", "S1t2"], ["P4ess"]], [["P4t1", "S2t1"], ["P4ess"]], [["P4t1", "P2t2", "S2t1"], ["P4ess"]],
 ];
+// with multimod: two bench crafts (P1 and S2 groups)
+export const RICH_MULTIMOD_CASES = [["P1t1", "S2t1", "P3t2"], ["P1t1", "S2t1", "S1t2"], ["P1t1", "S2t1", "P3t2", "S4t2"]];
 export const RICH_ALT_CASES = [["P1t2"], ["P1t1", "S3t2"], ["P2t2", "P3t1"], ["P1t2", "S2t1"], ["P2t2", "P3t1", "S2t1"], ["S1t2", "S3t2", "S2t1"]];
 
-export function richContext(db, ids) {
-  return buildContext(db, db.bases[0], 84, [], ids.map((id) => ({ mod: db.modById.get(id), minMod: db.modById.get(id) })));
-}
-export function stageOneTargets(ctx) {
-  const pick = (side) => ctx.hard.map((t, i) => ({ t, i })).filter((x) => x.t.side === side).sort((a, b) => a.t.naturalWeight - b.t.naturalWeight)[0];
-  return [pick("p"), pick("s")].filter(Boolean);
+export function richContext(db, ids, opts = {}) {
+  return buildContext(db, db.bases[0], 84, [], ids.map((id) => ({ mod: db.modById.get(id), minMod: db.modById.get(id) })), [], opts);
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
@@ -218,6 +240,21 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     const f = forced.map((id) => rich.modById.get(id));
     const ex = exactReroll(ctx, ctx.pool, f).p, bf = bruteReroll(ctx, ctx.pool, f, RARE_COUNTS);
     report(relErr(ex, bf) <= EXACT_TOLERANCE, `reroll ${ids.join(" + ")}${forced.length ? " with " + forced : ""}: ${ex.toPrecision(8)} vs ${bf.toPrecision(8)}`);
+  }
+  for (const ids of RICH_MULTIMOD_CASES) {
+    const ctx = richContext(rich, ids, { maxCrafts: 2 });
+    const ex = exactReroll(ctx, ctx.pool, []).p, bf = bruteReroll(ctx, ctx.pool, [], RARE_COUNTS);
+    report(ctx.crafts.length === 2 && relErr(ex, bf) <= EXACT_TOLERANCE, `reroll with multimod ${ids.join(" + ")}: ${ex.toPrecision(8)} vs ${bf.toPrecision(8)}`);
+    const s1 = stageOneTargets(ctx);
+    const ea = exactAltRegal(ctx, s1), ba = bruteAltRegal(ctx, s1);
+    report(["p1", "p2", "avgExalts"].every((k) => relErr(ea[k], ba[k]) <= EXACT_TOLERANCE), `alteration route with multimod ${ids.join(" + ")}: p2 ${ea.p2.toPrecision(6)} vs ${ba.p2.toPrecision(6)}`);
+  }
+  for (const ids of [["P1t2", "P3t2"], ["S1t2", "P3t2", "S2t1"], ["P1t2", "S1t1"]]) {
+    const ctx = richContext(rich, ids);
+    const s1 = stageOneTargets(ctx);
+    const block = { tag: "attack", side: "s" };
+    const ea = exactAltRegal(ctx, s1, block), ba = bruteAltRegal(ctx, s1, block);
+    report(["p1", "p2", "avgExalts"].every((k) => relErr(ea[k], ba[k]) <= EXACT_TOLERANCE), `alteration route with "Cannot roll Attack Modifiers" ${ids.join(" + ")}: p2 ${ea.p2.toPrecision(6)} vs ${ba.p2.toPrecision(6)}`);
   }
   for (const ids of RICH_ALT_CASES) {
     const ctx = richContext(rich, ids);

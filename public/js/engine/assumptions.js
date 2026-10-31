@@ -11,3 +11,8 @@ export const MAGIC_TWO_MOD_CHANCE = 0.5;
 export function rareModCounts(base) {
   return base.cls === "Jewel" ? JEWEL_COUNTS : RARE_COUNTS;
 }
+
+// A Chaos Orb on an item with "Prefixes (or Suffixes) Cannot Be Changed" keeps that side and rolls new mods
+// on the other side only. Assumed: the mod count is rolled as usual (RARE_COUNTS) and the kept mods count
+// towards it, with at least this many new mods.
+export const LOCKED_REROLL_MIN_NEW = 1;

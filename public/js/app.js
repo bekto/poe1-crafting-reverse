@@ -164,10 +164,10 @@ function oneIn(p) {
 function renderPlan(plan, ilvl) {
   const parts = [];
   if (plan.benchTarget) parts.push(`<strong>${esc(plan.benchTarget.option.mod.x.replace(/\n/g, " / "))}</strong> will be bench crafted at the end, so the random part doesn't need to hit it.`);
-  if (plan.extraBenchable.length) parts.push(`${plan.extraBenchable.map((m) => `“${esc(m.x)}”`).join(", ")} could also be bench crafted, but only one crafted mod fits without multimod (not modelled yet), so it's treated as a mod to roll.`);
+  if (plan.extraBenchable.length) parts.push(`${plan.extraBenchable.map((m) => `“${esc(m.x)}”`).join(", ")} can be bench crafted too. Plans marked “+ multimod” craft two mods with “Can have up to 3 Crafted Modifiers”; the others roll it.`);
   if (plan.impossibleNaturally.length) parts.push(`${plan.impossibleNaturally.map((m) => `“${esc(m.x)}”`).join(", ")} can't roll naturally on this base at item level ${ilvl}; only an essence (or a higher item level) can give it.`);
   if (ilvl < plan.minIlvl) parts.push(`Your item level (${ilvl}) is below ${plan.minIlvl}, which the chosen tiers need.`);
-  parts.push(`Ranked by chance per try. A method with lower odds can still be cheaper if its currency is cheap — for example Alterations versus Deafening Essences.`);
+  parts.push(`Ranked by chance per try (two-stage methods by total tries). A method with lower odds can still be cheaper if its currency is cheap — for example Alterations versus Deafening Essences, or a metacraft that costs Divine Orbs on every try.`);
   $("planSummary").innerHTML = `<p class="summary">${parts.join(" ")}</p>`;
   const box = $("methods");
   box.innerHTML = "";
@@ -176,14 +176,20 @@ function renderPlan(plan, ilvl) {
     const realistic = m.p > 0 && m.p >= 1e-5;
     d.className = "method" + (i === 0 && m.p > 0 ? " best" : "") + (realistic ? "" : " unlikely");
     if (i === 0) d.open = true;
-    const odds = m.kind === "altregal" && m.p > 0
-      ? `<b>~${oneIn(m.p)} alterations</b><small>${pct(m.p1)} per alteration to start · ${pct(m.p2)} that regal + exalts finish it</small>`
+    const odds = m.kind === "lock" && m.p > 0
+      ? `<b>~${oneIn(m.p)} tries</b><small>stage 1: ${pct(m.p1)} per try · stage 2: ${pct(m.p2)} per lock craft + Chaos Orb${m.exact ? " · exact" : ""}</small>`
+      : m.kind === "altregal" && m.p > 0
+      ? `<b>~${oneIn(m.p)} alterations</b><small>${pct(m.p1)} per alteration to start · ${pct(m.p2)} that regal + exalts finish it${m.exact ? " · exact" : ""}</small>`
       : m.p > 0
       ? `<b>1 in ${oneIn(m.p)}</b><small>${pct(m.p)} per try${m.n90 ? ` · ${m.n90.toLocaleString()} tries for 90%` : ""}${m.exact ? " · exact" : m.hits < 30 ? " · rough estimate" : ""}</small>`
       : m.exact
       ? `<b>Impossible</b><small>this method can't make the item</small>`
       : `<b>&lt; 1 in ${oneIn(m.upperBound)}</b><small>no hits in ${m.trials.toLocaleString()} simulated tries</small>`;
-    const kind = { chaos: "Chaos spam", essence: "Essence", fossil: "Fossils", altregal: "Alteration route · cheap currency, many tries" }[m.kind];
+    const kind = {
+      chaos: "Chaos spam", essence: "Essence", fossil: "Fossils",
+      altregal: m.block ? "Alteration route with a metacraft" : "Alteration route · cheap currency, many tries",
+      lock: "Metacraft · two stages, each stage-2 try needs a new lock craft",
+    }[m.kind] + (m.multimod ? " · multimod" : "");
     d.innerHTML = `
       <summary><span class="mname">${esc(m.name)}<span class="kind">${kind}${m.corrupt ? " · corrupted essence" : ""}</span></span><span class="odds">${odds}</span></summary>
       <ol class="steps">${m.steps.map((s) => `<li><b>${esc(s.title)}</b><span>${esc(s.detail)}</span></li>`).join("")}</ol>`;

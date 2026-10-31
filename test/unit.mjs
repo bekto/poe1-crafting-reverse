@@ -437,7 +437,7 @@ test("planner uses exact odds for 1-2 wanted mods and simulation for more", asyn
   const again = planCraft(db, item.base, item.ilvl, [], want([0, 3]), [], { refineMs: 0 });
   eq(again.methods.find((m) => m.kind === "chaos").p, chaos.p, "no noise between runs");
   const three = planCraft(db, item.base, item.ilvl, [], want([0, 3, 5]), [], { refineMs: 0, trials: 2000 });
-  ok(three.methods.every((m) => !m.exact), "3 targets use simulation");
+  ok(three.methods.filter((m) => ["chaos", "essence", "fossil"].includes(m.kind)).every((m) => !m.exact), "3 targets use simulation");
 });
 
 test("exact odds of an impossible target are exactly zero", async () => {
@@ -451,6 +451,46 @@ test("exact odds of an impossible target are exactly zero", async () => {
   eq(chaos.exact, true);
   eq(chaos.p, 0);
   ok(/can't make/.test(chaos.steps.map((x) => x.detail).join(" ")));
+});
+
+// ------------------------------------------------------------------ metacrafting
+test("meta crafts are found in the bench data with their costs", () => {
+  for (const k of ["multimod", "lockPrefixes", "lockSuffixes", "noAttack", "noCaster"]) {
+    ok(db.meta[k], k);
+    ok(Object.keys(db.meta[k].cost).length > 0, `${k} has a cost`);
+  }
+  eq(db.meta.multimod.mod.g, "s", "multimod is a suffix");
+  eq(db.meta.lockPrefixes.mod.g, "s", "the prefix lock is itself a suffix");
+});
+
+test("craftReserve: one slot per missing craft, plus multimod for two", async () => {
+  const { craftReserve } = await import("../public/js/engine/pool.js");
+  const crafts = [{ side: "p" }, { side: "s" }];
+  deq(craftReserve(crafts, 0), { p: 0, s: 0 });
+  deq(craftReserve(crafts, 1), { p: 1, s: 0 });
+  deq(craftReserve(crafts, 3), { p: 1, s: 2 }, "two crafts + multimod suffix");
+  deq(craftReserve([], 0, "s", { p: 0, s: 1 }), { p: 0, s: 1 }, "extra reserve");
+});
+
+test("planner offers multimod, lock and block variants on real items", async () => {
+  const { planCraft } = await import("../public/js/engine/craft.js");
+  const { ITEMS } = await import("../public/js/samples.js");
+  const { item, ident } = parse(ITEMS.ring);
+  const want = (idx) => ident.mods.filter((_, i) => idx.includes(i)).map((m) => ({ mod: m.mod, minMod: m.mod }));
+  // low-tier life, cold res and the crafted ES are all bench-able on rings
+  const { tierOf, families } = tierTables(db, item.base, []);
+  const lowest = (m) => { const f = families.get(tierOf.get(m.mod.id)?.family); return f ? f[f.length - 1] : m.mod; };
+  const low = ident.mods.filter((_, i) => [0, 3, 2].includes(i)).map((m) => ({ mod: m.mod, minMod: lowest(m) }));
+  const plan = planCraft(db, item.base, item.ilvl, [], low, [], { refineMs: 0, trials: 4000 });
+  ok(plan.extraBenchable.length >= 1);
+  const mm = plan.methods.filter((m) => m.multimod);
+  ok(mm.length > 0, "multimod variants");
+  ok(mm.every((m) => m.crafts.length === 2), "two crafts each");
+  ok(mm.some((m) => m.steps.some((s) => /Can have up to 3 Crafted Modifiers/.test(s.title))), "multimod step");
+  const lock = planCraft(db, item.base, item.ilvl, [], want([0, 3]), [], { refineMs: 0 }).methods.filter((m) => m.kind === "lock");
+  ok(lock.length > 0, "lock method for a prefix + a suffix");
+  ok(lock.every((m) => m.p > 0 && m.p <= Math.min(m.p1, m.p2)), "total tries = stage 1 + stage 2");
+  ok(lock[0].steps.some((s) => /Cannot Be Changed/.test(s.title)));
 });
 
 // ------------------------------------------------------------------ runner

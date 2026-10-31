@@ -54,8 +54,9 @@ The planner currently covers:
 - Chaos Orb spam
 - Essences: the lowest-tier essence that still gives the needed mod, including corrupted-only essences
 - Fossils: the best combinations of 1 to 3 fossils, chosen by how much they raise the share of the wanted mods
-- Alteration (+ Augmentation) → Regal → Exalted Orb, restarting the item when a slam misses
-- One bench craft at the end, with a check that a free affix is left for it
+- Alteration (+ Augmentation) → Regal → Exalted Orb, restarting the item when a slam misses, also with "Cannot roll Attack/Caster Modifiers" crafted for the exalts when none of the missing mods have that tag
+- Metacrafting in two stages: roll one side with the best reroll method, then "Prefixes (or Suffixes) Cannot Be Changed" + Chaos Orb until the other side is right
+- Bench crafts at the end: one, or two with "Can have up to 3 Crafted Modifiers" (shown as "+ multimod"), with a check that the free slots are left. Bench costs come from the game data.
 
 ### Assumptions to verify
 
@@ -65,13 +66,15 @@ These aren't in the game data. Each one is a named constant in `public/js/engine
 - `JEWEL_COUNTS`: jewels get 3 or 4 mods, with chances 8/12 and 4/12 (an estimate).
 - `MAGIC_TWO_MOD_CHANCE`: an Alteration or Transmutation gives 2 mods half the time (an estimate).
 - Fossil weights multiply: a 1000 entry means ×10, and a 0 entry blocks the mod.
+- `LOCKED_REROLL_MIN_NEW`: a Chaos Orb on an item with "Prefixes/Suffixes Cannot Be Changed" keeps that side and rolls new mods only on the other side. The mod count is rolled as usual and the kept mods count towards it, with at least 1 new mod. The plan assumes the locked side is full, apart from slots kept for bench crafts.
+- "Cannot roll Attack/Caster Modifiers" blocks mods whose tags include `attack` / `caster`.
 - Each new mod is picked with chance proportional to its spawn weight, among the mods that are still allowed (no mod from a group already on the item, and a free prefix or suffix slot).
 
 `test/reference.mjs` checks that the simulator gives the exact answers that follow from these assumptions on a small made-up pool (Chaos, Alteration, Alteration + Augmentation, essence). It checks the maths, not the assumptions themselves.
 
 ### Not covered yet
 
-Harvest, Eldritch currency, metacrafting, multimod, veiled mods, Awakener's and Conqueror's orbs, recombinators, beastcrafting, Aisling, the 3.29 Allflame mechanic, and prices from poe.ninja.
+Harvest, Eldritch currency, veiled mods, Awakener's and Conqueror's orbs, recombinators, beastcrafting, Aisling, the 3.29 Allflame mechanic, and prices from poe.ninja.
 
 ## Tests
 

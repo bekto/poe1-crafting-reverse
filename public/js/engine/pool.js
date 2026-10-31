@@ -95,3 +95,16 @@ export function benchOptionsFor(db, base, target) {
   const list = db.benchByClass.get(base.cls) || [];
   return list.filter((o) => o.mod && o.mod.g === target.side && satisfies(o.mod, target));
 }
+
+/**
+ * Free slots the end-of-craft bench crafts need: one per missing craft on its side, plus the multimod craft
+ * ("Can have up to 3 Crafted Modifiers", itself a crafted mod) when two or more are missing.
+ * missing: bitmask over crafts; extra: slots reserved for something else, e.g. a metacraft.
+ */
+export function craftReserve(crafts, missing, multimodSide = "s", extra = null) {
+  const r = { p: extra?.p || 0, s: extra?.s || 0 };
+  let n = 0;
+  crafts.forEach((c, i) => { if (missing & (1 << i)) { r[c.side]++; n++; } });
+  if (n >= 2) r[multimodSide]++;
+  return r;
+}

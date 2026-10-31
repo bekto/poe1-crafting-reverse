@@ -1,103 +1,28 @@
-// Monte Carlo crafting simulator and reverse-crafting planner for PoE 1.
-import { basePool, itemTags, spawnWeight, maxAffixes, satisfies, makeTarget, benchOptionsFor } from "./pool.js";
-import { MAGIC_TWO_MOD_CHANCE, rareModCounts } from "./assumptions.js";
+// Reverse-crafting planner for PoE 1: builds the targets, tries every covered method, and ranks them.
+import { basePool, itemTags, spawnWeight, maxAffixes, satisfies, makeTarget, benchOptionsFor, craftReserve } from "./pool.js";
+import { MAGIC_TWO_MOD_CHANCE, rareModCounts, LOCKED_REROLL_MIN_NEW } from "./assumptions.js";
 import { exactReroll, exactAltRegal } from "./exact.js";
+import {
+  mulberry32, CompiledPool, State, addRandom, success, blockedCrafts, fixedInfo, simulateReroll,
+  stats, exactStats, targetMask, BLOCK_BITS,
+} from "./sim.js";
+import { buildSteps, pickBench } from "./steps.js";
 
-function mulberry32(seed) {
-  return function () {
-    let t = (seed += 0x6d2b79f5);
-    t = Math.imul(t ^ (t >>> 15), t | 1);
-    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
+export { currencyName } from "./steps.js";
 
-function pickCount(counts, rng) {
-  let r = rng();
-  for (const [n, p] of counts) { if ((r -= p) <= 0) return n; }
-  return counts[counts.length - 1][0];
-}
-
-/** Compiles a weighted mod list into flat arrays for fast sampling. */
-class CompiledPool {
-  constructor(entries, targets, groupIds) {
-    this.n = entries.length;
-    this.mods = entries.map((e) => e.mod);
-    this.w = Float64Array.from(entries.map((e) => e.w));
-    this.side = Uint8Array.from(entries.map((e) => (e.mod.g === "p" ? 0 : 1)));
-    this.groups = entries.map((e) => e.mod.gr.map((g) => groupIds(g)));
-    this.mask = Int32Array.from(entries.map((e) => targetMask(e.mod, targets)));
-    // members of every group, so picking a mod can remove its whole group at once
-    this.members = new Map();
-    this.groups.forEach((gs, i) => gs.forEach((g) => {
-      if (!this.members.has(g)) this.members.set(g, []);
-      this.members.get(g).push(i);
-    }));
-    this.sideTotal = [0, 0];
-    for (let i = 0; i < this.n; i++) this.sideTotal[this.side[i]] += this.w[i];
-    this.removed = new Int32Array(this.n);
-  }
-}
-
-function targetMask(mod, targets) {
-  let m = 0;
-  targets.forEach((t, i) => { if (satisfies(mod, t)) m |= 1 << i; });
-  return m;
-}
-
-/** Mutable item state during a simulated craft. */
-class State {
-  constructor(nGroups) { this.gStamp = new Int32Array(nGroups); this.stamp = 0; this.P = null; this.reset({ p: 3, s: 3 }); }
-  bind(P) { this.P = P; }
-  reset(max) {
-    this.stamp++; this.nP = 0; this.nS = 0; this.mask = 0; this.max = { ...max }; this.count = 0;
-    if (this.P) this.tot = [this.P.sideTotal[0], this.P.sideTotal[1]];
-  }
-  has(groups) { for (const g of groups) if (this.gStamp[g] === this.stamp) return true; return false; }
-  add(side, groups, mask) {
-    if (side === 0) this.nP++; else this.nS++;
-    const P = this.P;
-    for (const g of groups) {
-      if (this.gStamp[g] === this.stamp) continue;
-      this.gStamp[g] = this.stamp;
-      const mem = P && P.members.get(g);
-      if (mem) for (const j of mem) if (P.removed[j] !== this.stamp) { P.removed[j] = this.stamp; this.tot[P.side[j]] -= P.w[j]; }
-    }
-    this.mask |= mask; this.count++;
-  }
-  free(side) { return side === 0 ? this.max.p - this.nP : this.max.s - this.nS; }
-}
-
-/** Adds one random mod (exalt-style). Records in st.lastBench whether it met the bench target. */
-function addRandomTrack(P, st, rng) {
-  const pOpen = st.nP < st.max.p, sOpen = st.nS < st.max.s;
-  const total = (pOpen ? Math.max(0, st.tot[0]) : 0) + (sOpen ? Math.max(0, st.tot[1]) : 0);
-  st.lastBench = false;
-  if (total <= 1e-9) return false;
-  let r = rng() * total;
-  const stamp = st.stamp, removed = P.removed, side = P.side, w = P.w;
-  for (let i = 0; i < P.n; i++) {
-    if (removed[i] === stamp) continue;
-    const sd = side[i];
-    if (sd === 0 ? !pOpen : !sOpen) continue;
-    r -= w[i];
-    if (r <= 0) {
-      st.add(sd, P.groups[i], P.mask[i]);
-      if (P.benchMask && P.benchMask[i]) st.lastBench = true;
-      return true;
-    }
-  }
-  return false;
-}
+// how many of the best variants with multimod to keep next to the single-craft plans
+const MULTIMOD_VARIANTS_KEPT = 4;
 
 /**
- * Plan context: base, targets split into rolled ("hard") targets and one bench-crafted target.
+ * Plan context: base, targets split into rolled ("hard") targets and bench-crafted ones.
+ * opts.maxCrafts: 1, or 2 with "Can have up to 3 Crafted Modifiers". opts.reserve: extra free slots the
+ * finished roll needs (for a metacraft). opts.caps / opts.counts: affix limits and mod counts of the roll.
  */
-export function buildContext(db, base, ilvl, influences, wanted, fixed = []) {
+export function buildContext(db, base, ilvl, influences, wanted, fixed = [], opts = {}) {
   // wanted: [{mod, minMod}] where minMod is the lowest acceptable tier mod
   const groupIndex = new Map();
   const gid = (g) => { if (!groupIndex.has(g)) groupIndex.set(g, groupIndex.size); return groupIndex.get(g); };
-  const pool = basePool(db, base, influences, ilvl);
+  const pool = opts.pool || basePool(db, base, influences, ilvl);
   const totalW = { p: 0, s: 0 };
   for (const e of pool) totalW[e.mod.g] += e.w;
 
@@ -106,105 +31,44 @@ export function buildContext(db, base, ilvl, influences, wanted, fixed = []) {
     const natural = pool.filter((e) => satisfies(e.mod, t));
     t.naturalWeight = natural.reduce((a, e) => a + e.w, 0);
     t.share = t.naturalWeight / (totalW.p + totalW.s || 1);
-    t.bench = benchOptionsFor(db, base, t);
+    t.bench = opts.noBench ? [] : benchOptionsFor(db, base, t);
     t.minIlvl = natural.length ? Math.min(...natural.map((e) => e.mod.l)) : null;
     return t;
   });
-  // pick at most one bench craft: the bench-able target that is hardest to roll naturally
+  // bench craft the bench-able targets that are hardest to roll naturally (or the ones given in opts.craftMods)
+  const maxCrafts = db.meta?.multimod ? opts.maxCrafts ?? 1 : Math.min(1, opts.maxCrafts ?? 1);
   const benchable = targets.filter((t) => t.bench.length);
   benchable.sort((a, b) => a.naturalWeight - b.naturalWeight);
-  const benchTarget = benchable[0] || null;
-  const hard = targets.filter((t) => t !== benchTarget);
-  const fixedEntries = fixed.map((m) => ({ mod: m }));
+  const crafts = opts.craftMods ? benchable.filter((t) => opts.craftMods.includes(t.wantedMod)) : benchable.slice(0, maxCrafts);
+  for (const c of crafts) c.option = pickBench(c);
+  const hard = targets.filter((t) => !crafts.includes(t));
   return {
-    db, base, ilvl, influences, pool, targets, hard, benchTarget, totalW, gid, groupIndex,
-    tags: itemTags(db, base, influences), fixedEntries,
-    extraBenchable: benchable.slice(1),
-  };
-}
-
-function compileFor(ctx, entries) {
-  const P = new CompiledPool(entries, ctx.hard, ctx.gid);
-  P.needMask = (1 << ctx.hard.length) - 1;
-  if (ctx.benchTarget) {
-    P.bench = {
-      side: ctx.benchTarget.side === "p" ? 0 : 1,
-      groups: ctx.benchTarget.groups.map(ctx.gid),
-    };
-    // a naturally rolled mod that already satisfies the bench target also counts
-    P.benchMask = Int32Array.from(entries.map((e) => (satisfies(e.mod, ctx.benchTarget) ? 1 : 0)));
-  }
-  return P;
-}
-
-function fixedInfo(ctx, mod) {
-  return { side: mod.g === "p" ? 0 : 1, groups: mod.gr.map(ctx.gid), mask: targetMask(mod, ctx.hard), benchHit: ctx.benchTarget && satisfies(mod, ctx.benchTarget) };
-}
-
-function success(P, st, benchHit) {
-  if ((st.mask & P.needMask) !== P.needMask) return false;
-  if (!P.bench || benchHit) return true;
-  return st.free(P.bench.side) > 0 && !st.has(P.bench.groups);
-}
-
-/** Simulate repeated full rerolls (chaos, essence, fossil). forced = mods always added first. */
-function simulateReroll(ctx, P, forced, trials, seed) {
-  const rng = mulberry32(seed);
-  const st = new State(ctx.groupIndex.size + 8);
-  st.bind(P);
-  const counts = rareModCounts(ctx.base);
-  const max = maxAffixes(ctx.base);
-  const forcedInfo = [...ctx.fixedEntries.map((e) => e.mod), ...forced].map((m) => fixedInfo(ctx, m));
-  let hits = 0;
-  for (let t = 0; t < trials; t++) {
-    st.reset(max);
-    let benchHit = false;
-    for (const f of forcedInfo) { st.add(f.side, f.groups, f.mask); if (f.benchHit) benchHit = true; }
-    const n = pickCount(counts, rng);
-    while (st.count < n) {
-      if (!addRandomTrack(P, st, rng)) break;
-      if (st.lastBench) benchHit = true;
-    }
-    if (success(P, st, benchHit)) hits++;
-  }
-  return hits;
-}
-
-function stats(hits, trials) {
-  const p = hits / trials;
-  return {
-    p,
-    hits,
-    trials,
-    upperBound: hits === 0 ? 3 / trials : null, // 95% upper bound when nothing hit
-    expected: p > 0 ? 1 / p : null,
-    n90: p > 0 ? (p >= 1 ? 1 : Math.ceil(Math.log(0.1) / Math.log(1 - p))) : null,
-  };
-}
-
-/** Odds of a known probability, in the same shape as stats(). */
-function exactStats(p) {
-  return {
-    p, exact: true, hits: null, trials: null, upperBound: null,
-    expected: p > 0 ? 1 / p : null,
-    n90: p > 0 ? (p >= 1 ? 1 : Math.ceil(Math.log(0.1) / Math.log(1 - p))) : null,
+    db, base, ilvl, influences, pool, targets, hard, crafts, totalW, gid, groupIndex,
+    tags: itemTags(db, base, influences),
+    fixedEntries: fixed.map((m) => ({ mod: m })),
+    extraBenchable: benchable.filter((t) => !crafts.includes(t)),
+    multimodSide: db.meta?.multimod?.mod.g || "s",
+    reserve: opts.reserve || null,
+    caps: opts.caps || maxAffixes(base),
+    counts: opts.counts || rareModCounts(base),
+    noExact: !!opts.noExact,
   };
 }
 
 /** Exact odds for small cases, otherwise a Monte Carlo estimate that the planner can refine. */
-function rerollOdds(ctx, entries, forced, P, trials, seed) {
+function rerollOdds(ctx, entries, forced, trials, seed) {
   if (!ctx.noExact) {
     const ex = exactReroll(ctx, entries, [...ctx.fixedEntries.map((e) => e.mod), ...forced]);
     if (ex) return exactStats(ex.p);
   }
+  const P = new CompiledPool(ctx, entries);
   const run = (n, sd) => simulateReroll(ctx, P, forced, n, sd);
   return { rerun: run, ...stats(run(trials, seed), trials) };
 }
 
-// ---------------------------------------------------------------- methods
+// ---------------------------------------------------------------- reroll methods
 function chaosMethod(ctx, trials) {
-  const P = compileFor(ctx, ctx.pool);
-  return { kind: "chaos", name: "Chaos Orb spam", currency: [["Chaos Orb", 1]], ...rerollOdds(ctx, ctx.pool, [], P, trials, 1) };
+  return { kind: "chaos", name: "Chaos Orb spam", currency: [["Chaos Orb", 1]], ...rerollOdds(ctx, ctx.pool, [], trials, 1) };
 }
 
 function essenceMethods(ctx, trials) {
@@ -216,20 +80,18 @@ function essenceMethods(ctx, trials) {
     const mod = ctx.db.modById.get(modId);
     if (!mod) continue;
     if (e.ilvl && ctx.ilvl < e.ilvl) continue;
-    const mask = targetMask(mod, ctx.hard);
-    const benchHit = ctx.benchTarget && satisfies(mod, ctx.benchTarget);
-    if (!mask && !benchHit) continue;
+    if (ctx.caps[mod.g] <= 0) continue; // a locked side can't take the essence mod
+    if (!targetMask(mod, ctx.hard) && !targetMask(mod, ctx.crafts)) continue;
     const fam = e.name.replace(/^\S+ Essence of /, "Essence of ");
     // keep the cheapest (lowest level) essence of a family that still hits the target
     const prev = families.get(fam);
     if (!prev || e.level < prev.e.level) families.set(fam, { e, mod });
   }
-  const P = compileFor(ctx, ctx.pool);
   let seed = 100;
   for (const { e, mod } of families.values()) {
     out.push({
       kind: "essence", name: e.name, currency: [[e.name, 1]], essenceMod: mod,
-      corrupt: e.corrupt, ...rerollOdds(ctx, ctx.pool, [mod], P, trials, seed++),
+      corrupt: e.corrupt, ...rerollOdds(ctx, ctx.pool, [mod], trials, seed++),
     });
   }
   return out;
@@ -259,7 +121,7 @@ function fossilPool(ctx, fossils) {
   const added = new Set(fossils.flatMap((f) => f.added));
   for (const id of added) {
     const mod = ctx.db.modById.get(id);
-    if (!mod || mod.l > ctx.ilvl) continue;
+    if (!mod || mod.l > ctx.ilvl || ctx.caps[mod.g] <= 0) continue;
     const w = spawnWeight(mod, ctx.tags) * mult(mod);
     if (w > 0) entries.push({ mod, w });
   }
@@ -268,8 +130,7 @@ function fossilPool(ctx, fossils) {
 }
 
 function fossilMethods(ctx, trials) {
-  const targetTags = new Set(ctx.hard.flatMap((t) => t.mod.t));
-  if (ctx.benchTarget) ctx.benchTarget.mod.t.forEach((t) => targetTags.add(t));
+  const targetTags = new Set([...ctx.hard, ...ctx.crafts].flatMap((t) => t.mod.t));
   const singles = ctx.db.fossils.filter((f) => fossilApplicable(ctx, f));
   const relevant = singles.filter((f) =>
     f.pos.some(([tag]) => targetTags.has(tag)) ||
@@ -279,8 +140,7 @@ function fossilMethods(ctx, trials) {
     let tot = 0;
     for (const e of entries) tot += e.w;
     let score = 0;
-    const all = ctx.benchTarget ? [...ctx.hard] : ctx.hard;
-    for (const t of all) {
+    for (const t of ctx.hard) {
       let w = 0;
       for (const e of entries) if (satisfies(e.mod, t)) w += e.w;
       if (w <= 0) return -Infinity;
@@ -302,123 +162,260 @@ function fossilMethods(ctx, trials) {
   let seed = 500;
   return ranked.slice(0, 5).map(({ c }) => {
     const { entries, forced } = fossilPool(ctx, c);
-    const P = compileFor(ctx, entries);
     return {
       kind: "fossil",
       name: c.map((f) => f.name).join(" + "),
       fossils: c,
       currency: [...c.map((f) => [f.name, 1]), [resonatorName(c.length), 1]],
-      ...rerollOdds(ctx, entries, forced, P, trials, seed++),
+      ...rerollOdds(ctx, entries, forced, trials, seed++),
     };
   });
 }
 
-function resonatorName(n) {
+export function resonatorName(n) {
   return ["", "Primitive Chaotic Resonator", "Potent Chaotic Resonator", "Powerful Chaotic Resonator", "Prime Chaotic Resonator"][n];
 }
 
-/** Alteration (+augment) until the 1-2 hardest mods are hit, then regal, then exalted slams. */
-function altRegalMethod(ctx, trials) {
-  if (!ctx.hard.length) return null;
-  const P = compileFor(ctx, ctx.pool);
-  // stage 1 goal: hardest prefix target + hardest suffix target
+function rerollMethods(ctx, trials) {
+  return [chaosMethod(ctx, trials), ...essenceMethods(ctx, trials), ...fossilMethods(ctx, Math.floor(trials / 2))];
+}
+
+// ---------------------------------------------------------------- alteration route
+
+/** The stage-1 goal of the alteration route: the hardest prefix target and the hardest suffix target. */
+export function stageOneTargets(ctx) {
   const pick = (side) => ctx.hard.map((t, i) => ({ t, i })).filter((x) => x.t.side === side).sort((a, b) => a.t.naturalWeight - b.t.naturalWeight)[0];
-  const s1 = [pick("p"), pick("s")].filter(Boolean);
+  return [pick("p"), pick("s")].filter(Boolean);
+}
+
+/**
+ * Alteration (+augment) until the 1-2 hardest mods are hit, then regal, then exalted slams.
+ * block: {key, tag, mod, side} for a "Cannot roll ... Modifiers" craft during the exalts.
+ */
+function altRegalMethod(ctx, trials, block = null) {
+  if (!ctx.hard.length) return null;
+  if (ctx.fixedEntries.length) return null; // fractured bases: rerolling to magic keeps the fractured mod, skip for now
+  const s1 = stageOneTargets(ctx);
+  const ex = ctx.noExact ? null : exactAltRegal(ctx, s1, block);
+  if (ex) return altRegalResult(ctx, s1, ex, true, block);
+
+  const P = new CompiledPool(ctx, ctx.pool);
   const s1Mask = s1.reduce((m, x) => m | (1 << x.i), 0);
-  const s1Sides = new Set(s1.map((x) => x.t.side === "p" ? 0 : 1));
-  const rng = mulberry32(900);
+  const s1Sides = new Set(s1.map((x) => (x.t.side === "p" ? 0 : 1)));
+  const rng = mulberry32(900); // same stage 1 for every variant
   const st = new State(ctx.groupIndex.size + 8);
   st.bind(P);
   const magicMax = { p: 1, s: 1 };
   const rareMax = maxAffixes(ctx.base);
-  const forced = ctx.fixedEntries.map((e) => fixedInfo(ctx, e.mod));
-  if (forced.length) return null; // fractured bases: rerolling to magic keeps the fractured mod, skip for now
-  const ex = ctx.noExact ? null : exactAltRegal(ctx, s1);
-  if (ex) return altRegalResult(s1, ex.p1, ex.p2, ex.augPerAlt, ex.avgExalts, true);
+  const metaSide = block ? (block.side === "p" ? 0 : 1) : -1;
+  const blockBit = block ? BLOCK_BITS[block.tag] : 0;
 
   let augs = 0;
   const altRoll = () => {
     st.reset(magicMax);
     const n = rng() < MAGIC_TWO_MOD_CHANCE ? 2 : 1;
-    let benchHit = false;
-    for (let k = 0; k < n; k++) { addRandomTrack(P, st, rng); if (st.lastBench) benchHit = true; }
+    for (let k = 0; k < n; k++) addRandom(P, st, rng);
     // augment if a needed side is still empty
     if (st.count === 1) {
       const needOther = [...s1Sides].some((sd) => st.free(sd) > 0) && (st.mask & s1Mask) !== s1Mask && (st.mask & s1Mask) !== 0;
-      if (needOther) { augs++; addRandomTrack(P, st, rng); if (st.lastBench) benchHit = true; }
+      if (needOther) { augs++; addRandom(P, st, rng); }
     }
-    return { ok: (st.mask & s1Mask) === s1Mask, benchHit };
+    return (st.mask & s1Mask) === s1Mask;
   };
   // stage 1 probability
   const n1 = trials * 2;
   let h1 = 0;
-  for (let t = 0; t < n1; t++) if (altRoll().ok) h1++;
+  for (let t = 0; t < n1; t++) if (altRoll()) h1++;
   const p1 = h1 / n1;
   const augPerAlt = augs / n1;
   if (p1 < 1e-4) return null;
 
   // stage 2 starting from successful magic items
   const n2 = Math.min(4000, Math.max(500, Math.floor(200000 * p1)));
-  let h2 = 0, exalts = 0, regalFail = 0;
+  let h2 = 0, exalts = 0;
   for (let t = 0; t < n2; t++) {
-    let r, guard = 0;
-    do { r = altRoll(); } while (!r.ok && ++guard < 1e6);
-    if (!r.ok) break;
-    let benchHit = r.benchHit;
+    let ok = false, guard = 0;
+    do { ok = altRoll(); } while (!ok && ++guard < 1e6);
+    if (!ok) break;
     st.max = { ...rareMax };
-    // regal
-    addRandomTrack(P, st, rng); if (st.lastBench) benchHit = true;
+    addRandom(P, st, rng); // regal
+    // the meta craft fills a slot while it's on; it comes off before the bench crafts
+    const meta = block && st.free(metaSide) > 0;
+    if (meta) st.max[metaSide === 0 ? "p" : "s"]--;
+    const room = meta ? metaSide : null;
     let used = 0;
-    while (!success(P, st, benchHit)) {
+    while (!success(ctx, P, st, room)) {
       // stop when the remaining targets can no longer fit
       const need = [0, 0];
       ctx.hard.forEach((tg, i) => { if (!(st.mask & (1 << i))) need[tg.side === "p" ? 0 : 1]++; });
-      if (P.bench && !benchHit && !st.has(P.bench.groups)) need[P.bench.side]++;
-      if (need[0] > st.free(0) || need[1] > st.free(1) || st.count >= rareMax.p + rareMax.s) break;
-      if (!addRandomTrack(P, st, rng)) break;
-      if (st.lastBench) benchHit = true;
+      const r = craftReserve(ctx.crafts, P.allCrafts & ~st.craftMask & ~blockedCrafts(P, st), ctx.multimodSide, ctx.reserve);
+      const real = (sd) => st.free(sd) + (room === sd ? 1 : 0);
+      if (need[0] > st.free(0) || need[1] > st.free(1) || need[0] + r.p > real(0) || need[1] + r.s > real(1) || st.free(0) + st.free(1) <= 0) break;
+      if (!addRandom(P, st, rng, meta ? blockBit : 0)) break;
       used++;
     }
     exalts += used;
-    if (success(P, st, benchHit)) h2++; else if (used === 0) regalFail++;
+    if (success(ctx, P, st, room)) h2++;
   }
-  return altRegalResult(s1, p1, h2 / n2, augPerAlt, exalts / n2, false);
+  return altRegalResult(ctx, s1, { p1, p2: h2 / n2, augPerAlt, avgExalts: exalts / n2 }, false, block);
 }
 
-function altRegalResult(s1, p1, p2, augPerAlt, avgExalts, exact) {
-  const total = p1 * p2;
+function altRegalResult(ctx, s1, r, exact, block) {
+  const total = r.p1 * r.p2;
   return {
     kind: "altregal",
-    name: "Alteration → Regal → Exalted Orb",
+    name: block ? `Alteration → Regal → "${block.mod.x}" + Exalted Orb` : "Alteration → Regal → Exalted Orb",
+    block,
     stage1Targets: s1.map((x) => x.t),
-    p1, p2, augPerAlt, avgExalts,
+    p1: r.p1, p2: r.p2, augPerAlt: r.augPerAlt, avgExalts: r.avgExalts,
     currency: [["Orb of Alteration", 1]],
     ...(exact ? exactStats(total) : stats(Math.round(total * 1e6), 1e6)),
     p: total,
     expectedAlts: total > 0 ? 1 / total : null,
-    expectedRegals: p2 > 0 ? 1 / p2 : null,
-    expectedExalts: p2 > 0 ? avgExalts / p2 : null,
+    expectedRegals: r.p2 > 0 ? 1 / r.p2 : null,
+    expectedExalts: r.p2 > 0 ? r.avgExalts / r.p2 : null,
   };
+}
+
+/** "Cannot roll Attack/Caster Modifiers" variants that help: the exalts still need mods without that tag. */
+function blockVariants(ctx) {
+  const out = [];
+  for (const [key, tag] of [["noAttack", "attack"], ["noCaster", "caster"]]) {
+    const meta = ctx.db.meta?.[key];
+    if (!meta) continue;
+    if ([...ctx.hard, ...ctx.crafts].some((t) => t.mod.t.includes(tag))) continue;
+    const blocked = ctx.pool.filter((e) => e.mod.t.includes(tag)).reduce((a, e) => a + e.w, 0);
+    if (blocked <= 0) continue;
+    out.push({ key, tag, mod: meta.mod, cost: meta.cost, side: meta.mod.g });
+  }
+  return out;
+}
+
+// ---------------------------------------------------------------- side lock: "Prefixes/Suffixes Cannot Be Changed" + Chaos
+
+/**
+ * Two stages: first roll the wanted mods of one side with the best reroll method (leaving room for the lock
+ * craft), then craft the lock and Chaos Orb until the other side is right. The Chaos Orb keeps the locked side
+ * and removes the lock craft, so each try needs a new lock craft.
+ */
+function lockMethods(ctx, trials, wanted, fixed) {
+  const out = [];
+  const db = ctx.db;
+  for (const [L, key] of [["p", "lockPrefixes"], ["s", "lockSuffixes"]]) {
+    const meta = db.meta?.[key];
+    if (!meta) continue;
+    const O = L === "p" ? "s" : "p";
+    const onL = ctx.hard.filter((t) => t.side === L), onO = ctx.hard.filter((t) => t.side === O);
+    if (!onL.length || !onO.length || ctx.fixedEntries.length) continue;
+    const pick = (list) => wanted.filter((w) => list.some((t) => t.wantedMod === w.mod));
+    const craftL = ctx.crafts.filter((c) => c.side === L), craftO = ctx.crafts.filter((c) => c.side === O);
+    // stage 1: wanted mods (and bench crafts) of side L, plus a free slot for the lock craft
+    const reserve = { p: 0, s: 0 };
+    reserve[meta.mod.g]++;
+    const ctx1 = buildContext(db, ctx.base, ctx.ilvl, ctx.influences, pick(onL).concat(pickCrafts(wanted, craftL)), [], { reserve, noExact: ctx.noExact, craftMods: craftL.map((c) => c.wantedMod) });
+    const stage1 = rerollMethods(ctx1, Math.floor(trials / 2)).filter((m) => m.p > 0).sort((a, b) => b.p - a.p)[0];
+    if (!stage1) continue;
+    // stage 2: Chaos keeps side L; new mods only on side O. Assume side L is full apart from slots kept for crafts.
+    const keptL = ctx.caps[L] - craftL.length;
+    const caps = { [L]: 0, [O]: ctx.caps[O] };
+    const counts = mergeCounts(ctx.counts.map(([n, p]) => [Math.min(caps[O], Math.max(LOCKED_REROLL_MIN_NEW, n - keptL)), p]));
+    const pool = ctx.pool.filter((e) => e.mod.g === O);
+    const ctx2 = buildContext(db, ctx.base, ctx.ilvl, ctx.influences, pick(onO).concat(pickCrafts(wanted, craftO)), [], { caps, counts, pool, noExact: ctx.noExact, craftMods: craftO.map((c) => c.wantedMod) });
+    const r2 = rerollOdds(ctx2, ctx2.pool, [], trials, 777);
+    delete stage1.rerun;
+    delete r2.rerun;
+    const p1 = stage1.p, p2 = r2.p;
+    const tries = p1 > 0 && p2 > 0 ? 1 / p1 + 1 / p2 : null;
+    out.push({
+      kind: "lock",
+      name: `${stage1.name}, then "${meta.mod.x}" + Chaos Orb`,
+      lockSide: L, meta, stage1, stage1Ctx: ctx1, stage2Ctx: ctx2,
+      p1, p2, keptL,
+      exact: !!(stage1.exact && r2.exact),
+      hits: stage1.exact && r2.exact ? null : Math.min(stage1.hits ?? Infinity, r2.hits ?? Infinity),
+      trials: r2.trials,
+      p: tries ? 1 / tries : 0,
+      expected: tries,
+      n90: null,
+      upperBound: tries ? null : 3 / trials,
+      currency: [...stage1.currency, ["Chaos Orb", 1]],
+    });
+  }
+  return out;
+}
+
+function pickCrafts(wanted, crafts) {
+  return wanted.filter((w) => crafts.some((t) => t.wantedMod === w.mod));
+}
+
+function mergeCounts(list) {
+  const m = new Map();
+  for (const [n, p] of list) m.set(n, (m.get(n) || 0) + p);
+  return [...m.entries()];
 }
 
 // ---------------------------------------------------------------- planner
 export function planCraft(db, base, ilvl, influences, wanted, fixed = [], opts = {}) {
   const trials = opts.trials || 20000;
-  const ctx = buildContext(db, base, ilvl, influences, wanted, fixed);
-  ctx.noExact = opts.exact === false; // force Monte Carlo (used by the tests)
+  const noExact = opts.exact === false; // force Monte Carlo (used by the tests)
+  const ctx = buildContext(db, base, ilvl, influences, wanted, fixed, { noExact });
   const methods = [];
-  methods.push(chaosMethod(ctx, trials));
-  methods.push(...essenceMethods(ctx, trials));
-  methods.push(...fossilMethods(ctx, Math.floor(trials / 2)));
+  methods.push(...rerollMethods(ctx, trials));
   const ar = altRegalMethod(ctx, Math.floor(trials / 2));
   if (ar) methods.push(ar);
-  // refine the most promising reroll methods (round-robin) until the estimates are reasonably precise
+  for (const b of blockVariants(ctx)) {
+    const m = altRegalMethod(ctx, Math.floor(trials / 2), b);
+    if (m && ar && m.p > ar.p) methods.push(m);
+  }
+  methods.push(...lockMethods(ctx, trials, wanted, fixed));
+  for (const m of methods) m.ctx = ctx;
+
+  // with two or more bench-able mods: the same methods with multimod and two bench crafts
+  if (ctx.extraBenchable.length && db.meta?.multimod) {
+    const ctx2 = buildContext(db, base, ilvl, influences, wanted, fixed, { maxCrafts: 2, noExact });
+    const mm = rerollMethods(ctx2, trials);
+    const ar2 = altRegalMethod(ctx2, Math.floor(trials / 2));
+    if (ar2) mm.push(ar2);
+    mm.sort((a, b) => b.p - a.p);
+    for (const m of mm.slice(0, MULTIMOD_VARIANTS_KEPT)) {
+      if (!(m.p > 0)) continue;
+      m.ctx = ctx2;
+      m.multimod = true;
+      m.name += " + multimod";
+      methods.push(m);
+    }
+  }
+  refine(methods, opts.refineMs ?? 8000);
+  methods.sort((a, b) => b.p - a.p);
+  for (const m of methods) {
+    m.steps = buildSteps(m.ctx, m);
+    m.crafts = m.ctx.crafts.map((c) => ({ mod: c.wantedMod, option: c.option }));
+    delete m.ctx; delete m.stage1Ctx; delete m.stage2Ctx;
+  }
+  const minIlvl = Math.max(base.lvl || 1, ...ctx.targets.map((t) => t.minIlvl || 1));
+  const impossible = ctx.hard.filter((t) => t.naturalWeight === 0);
+  return {
+    base, ilvl, influences, minIlvl,
+    targets: ctx.targets.map((t) => ({
+      mod: t.wantedMod, minMod: t.mod, side: t.side, share: t.share,
+      bench: ctx.crafts.includes(t) ? t.option : null,
+      benchPossible: t.bench.length > 0, naturalWeight: t.naturalWeight,
+    })),
+    benchTarget: ctx.crafts[0] ? { mod: ctx.crafts[0].wantedMod, option: ctx.crafts[0].option } : null,
+    extraBenchable: ctx.extraBenchable.map((t) => t.wantedMod),
+    impossibleNaturally: impossible.map((t) => t.wantedMod),
+    methods,
+  };
+}
+
+/** Refines the most promising simulated methods (round-robin) until the estimates are reasonably precise. */
+function refine(methods, budget) {
   const t0 = Date.now();
-  const budget = opts.refineMs ?? 8000;
   let seed = 7000;
   for (let round = 0; round < 40 && Date.now() - t0 < budget; round++) {
-    const withHits = methods.filter((m) => m.rerun && m.hits > 0);
-    const pool = withHits.length ? withHits : methods.filter((m) => m.rerun);
+    const sims = methods.filter((m) => m.rerun);
+    const withHits = sims.filter((m) => m.hits > 0);
+    const pool = withHits.length ? withHits : sims;
     const todo = pool.sort((x, y) => (y.p || y.upperBound) - (x.p || x.upperBound)).slice(0, 6).filter((m) => m.hits < 60 && m.trials < 1500000);
     if (!todo.length) break;
     for (const m of todo) {
@@ -429,97 +426,4 @@ export function planCraft(db, base, ilvl, influences, wanted, fixed = [], opts =
     }
   }
   for (const m of methods) delete m.rerun;
-  methods.sort((a, b) => b.p - a.p);
-  for (const m of methods) m.steps = buildSteps(ctx, m);
-  const minIlvl = Math.max(base.lvl || 1, ...ctx.hard.map((t) => t.minIlvl || 1));
-  const impossible = ctx.hard.filter((t) => t.naturalWeight === 0);
-  return {
-    base, ilvl, influences, minIlvl,
-    targets: ctx.targets.map((t) => ({
-      mod: t.wantedMod, minMod: t.mod, side: t.side, share: t.share,
-      bench: t === ctx.benchTarget ? t.bench[0] : null,
-      benchPossible: t.bench.length > 0, naturalWeight: t.naturalWeight,
-    })),
-    benchTarget: ctx.benchTarget ? { mod: ctx.benchTarget.wantedMod, option: pickBench(ctx.benchTarget) } : null,
-    extraBenchable: ctx.extraBenchable.map((t) => t.wantedMod),
-    impossibleNaturally: impossible.map((t) => t.wantedMod),
-    methods,
-  };
-}
-
-function pickBench(t) {
-  // cheapest bench option that is still good enough = the lowest tier that satisfies
-  return [...t.bench].sort((a, b) => (a.mod.l - b.mod.l))[0];
-}
-
-function fmtCost(cost) {
-  return Object.entries(cost || {}).map(([k, v]) => `${v}× ${currencyName(k)}`).join(", ");
-}
-
-export function currencyName(id) {
-  const map = {
-    CurrencyRerollRare: "Chaos Orb", CurrencyAddModToRare: "Exalted Orb", CurrencyRerollMagic: "Orb of Alteration",
-    CurrencyUpgradeToRare: "Orb of Alchemy", CurrencyRerollSocketColours: "Chromatic Orb", CurrencyRerollSocketLinks: "Orb of Fusing",
-    CurrencyRerollSocketNumbers: "Jeweller's Orb", CurrencyModValues: "Divine Orb", CurrencyConvertToNormal: "Orb of Scouring",
-    CurrencyUpgradeMagicToRare: "Regal Orb", CurrencyAddModToMagic: "Orb of Augmentation", CurrencyUpgradeToMagic: "Orb of Transmutation",
-    CurrencyRemoveMod: "Orb of Annulment", CurrencyRerollImplicit: "Blessed Orb", CurrencyIdentification: "Scroll of Wisdom",
-    CurrencyArmourQuality: "Armourer's Scrap", CurrencyWeaponQuality: "Blacksmith's Whetstone", CurrencyPassiveRefund: "Orb of Regret",
-    CurrencyVaal: "Vaal Orb", CurrencyGemQuality: "Gemcutter's Prism", CurrencyFlaskQuality: "Glassblower's Bauble",
-    CurrencyDuplicate: "Mirror of Kalandra", CurrencyPortal: "Portal Scroll", CurrencyUpgradeRandomly: "Orb of Chance",
-  };
-  const key = id.split("/").pop();
-  return map[key] || key.replace(/^Currency/, "").replace(/([a-z])([A-Z])/g, "$1 $2");
-}
-
-function pct(p) {
-  if (p >= 0.1) return (p * 100).toFixed(1) + "%";
-  if (p >= 0.001) return (p * 100).toFixed(2) + "%";
-  return (p * 100).toPrecision(2) + "%";
-}
-
-function buildSteps(ctx, m) {
-  const steps = [];
-  const infl = ctx.influences.length ? ` with ${ctx.influences.join(" + ")} influence` : "";
-  const minIlvl = Math.max(ctx.base.lvl || 1, ...ctx.hard.map((t) => t.minIlvl || 1));
-  const fixedTxt = ctx.fixedEntries.length ? ` that already has the fractured mod${ctx.fixedEntries.length > 1 ? "s" : ""} ${ctx.fixedEntries.map((e) => `"${e.mod.x.replace(/\n/g, " / ")}"`).join(", ")}` : "";
-  steps.push({
-    title: `Get a ${ctx.base.name}${infl}`,
-    detail: `Item level ${ctx.ilvl} (the plan was simulated at this level; at least ${minIlvl} is needed for the tiers you asked for)${fixedTxt}.`,
-  });
-  const odds = m.p > 0 ? `${pct(m.p)} per try — about ${fmtN(m.expected)} tries on average, ${fmtN(m.n90)} for a 90% chance.`
-    : m.exact ? "This method can't make this item."
-    : `Less than ${pct(m.upperBound)} per try in ${m.trials.toLocaleString()} simulated tries — not a realistic method for this item.`;
-  if (m.kind === "chaos") {
-    steps.push({ title: "Make it rare (Orb of Alchemy), then spam Chaos Orbs", detail: `Stop when the item has ${targetList(ctx)}. ${odds}` });
-  } else if (m.kind === "essence") {
-    steps.push({ title: `Spam ${m.name}`, detail: `Every essence guarantees "${m.essenceMod.x.replace(/\n/g, " / ")}" and rerolls the rest. Stop when it also has ${targetList(ctx, m.essenceMod)}. ${odds}${m.corrupt ? " This essence only comes from corrupting another essence with a Remnant of Corruption." : ""} Use an Orb of Scouring first if the item isn't normal or rare.` });
-  } else if (m.kind === "fossil") {
-    steps.push({
-      title: `Fossil craft: ${m.name} in a ${resonatorName(m.fossils.length)}`,
-      detail: `Effects: ${m.fossils.flatMap((f) => f.desc).join("; ")}. Keep rerolling until the item has ${targetList(ctx)}. ${odds}`,
-    });
-  } else if (m.kind === "altregal") {
-    const s1 = m.stage1Targets.map((t) => `"${t.wantedMod.x.replace(/\n/g, " / ")}"`).join(" and ");
-    steps.push({ title: "Orb of Transmutation, then spam Orbs of Alteration", detail: `Goal: a magic item with ${s1}. Use an Orb of Augmentation when only one of them shows up and there's a free slot. ${pct(m.p1)} per alteration (about ${fmtN(1 / m.p1)} alterations, ${(m.augPerAlt).toFixed(2)} augmentations per alteration).` });
-    steps.push({ title: "Regal Orb, then Exalted Orbs for the missing mods", detail: `From a good magic item, ${pct(m.p2)} chance that the regal + exalt slams finish the rest (${m.avgExalts.toFixed(1)} exalts per attempt on average). If a slam misses, start over (or annul — not modelled). Overall about ${fmtN(m.expectedAlts)} alterations, ${fmtN(m.expectedRegals)} regals and ${fmtN(m.expectedExalts)} exalts.` });
-  }
-  if (ctx.benchTarget) {
-    const o = pickBench(ctx.benchTarget);
-    steps.push({ title: `Bench craft "${o.mod.x.replace(/\n/g, " / ")}"`, detail: `Crafting bench, costs ${fmtCost(o.cost) || "a little currency"}. Needs a free ${o.mod.g === "p" ? "prefix" : "suffix"}, which the odds above already require.` });
-  }
-  return steps;
-}
-
-function targetList(ctx, except) {
-  const list = ctx.hard.filter((t) => !(except && satisfies(except, t))).map((t) => `"${t.mod.x.replace(/\n/g, " / ")}"${t.mod !== t.wantedMod ? " or better" : ""}`);
-  if (ctx.benchTarget) list.push(`a free ${ctx.benchTarget.side === "p" ? "prefix" : "suffix"} for the bench craft`);
-  return list.length ? list.join(", ") : "the mods you want";
-}
-
-function fmtN(n) {
-  if (n === null || n === undefined || !isFinite(n)) return "∞";
-  if (n < 10) return n.toFixed(1);
-  if (n < 1e4) return Math.round(n).toLocaleString();
-  if (n < 1e6) return (n / 1e3).toFixed(1) + "k";
-  return (n / 1e6).toFixed(1) + "M";
 }

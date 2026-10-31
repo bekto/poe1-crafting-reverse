@@ -7,8 +7,8 @@
 // item gets its last mod. So the odds are a one-dimensional integral over that moment, and on each side
 // the number of other groups that have rung by time t follows from a small Poisson-binomial table.
 // Groups with the same weight are interchangeable, which keeps the tables small.
-import { satisfies, maxAffixes } from "./pool.js";
-import { rareModCounts, MAGIC_TWO_MOD_CHANCE } from "./assumptions.js";
+import { satisfies, maxAffixes, craftReserve } from "./pool.js";
+import { MAGIC_TWO_MOD_CHANCE } from "./assumptions.js";
 
 export const MAX_EXACT_TARGETS = 2;
 // log-time grid for the integral: step and range (in multiples of the fastest/slowest clock)
@@ -19,51 +19,64 @@ const GRID_END = 45; // × 1 / smallest weight; e^-45 of the slowest clock is st
 /**
  * Turns a weighted pool into mod groups ("units"). Returns null when the structure isn't one this method
  * handles exactly (a mod in several groups, a group on both sides, or a target spread over several groups).
+ * With blockTag, every unit also gets its weights without the mods carrying that tag (field x).
  */
-export function buildUnits(ctx, entries) {
+export function buildUnits(ctx, entries, blockTag = null) {
   const units = new Map();
+  const crafts = ctx.crafts || [];
   for (const e of entries) {
     if (!(e.w > 0)) continue;
     if (e.mod.gr.length !== 1) return null;
     const g = e.mod.gr[0];
     let u = units.get(g);
-    if (!u) units.set(g, (u = { g, side: e.mod.g, w: 0, sat: ctx.hard.map(() => 0), benchSat: 0 }));
+    if (!u) {
+      const blank = () => ({ w: 0, sat: ctx.hard.map(() => 0), craftSat: crafts.map(() => 0) });
+      units.set(g, (u = { g, side: e.mod.g, ...blank(), x: blank() }));
+    }
     if (u.side !== e.mod.g) return null;
-    u.w += e.w;
-    ctx.hard.forEach((t, i) => { if (satisfies(e.mod, t)) u.sat[i] += e.w; });
-    if (ctx.benchTarget && satisfies(e.mod, ctx.benchTarget)) u.benchSat += e.w;
+    const parts = blockTag && e.mod.t.includes(blockTag) ? [u] : [u, u.x];
+    for (const part of parts) {
+      part.w += e.w;
+      ctx.hard.forEach((t, i) => { if (satisfies(e.mod, t)) part.sat[i] += e.w; });
+      crafts.forEach((c, j) => { if (satisfies(e.mod, c)) part.craftSat[j] += e.w; });
+    }
   }
+  const all = [...units.values()];
   const targetUnit = ctx.hard.map((_, i) => {
-    const us = [...units.values()].filter((u) => u.sat[i] > 0);
+    const us = all.filter((u) => u.sat[i] > 0);
     return us.length > 1 ? undefined : us[0] || null;
   });
   if (targetUnit.includes(undefined)) return null;
-  let benchUnit = null;
-  if (ctx.benchTarget) {
-    if (ctx.benchTarget.groups.length !== 1) return null;
-    benchUnit = units.get(ctx.benchTarget.groups[0]) || null;
-    if ([...units.values()].some((u) => u.benchSat > 0 && u !== benchUnit)) return null;
+  const craftUnit = [];
+  for (let j = 0; j < crafts.length; j++) {
+    if (crafts[j].groups.length !== 1) return null;
+    const u = units.get(crafts[j].groups[0]) || null;
+    if (all.some((v) => v.craftSat[j] > 0 && v !== u)) return null;
+    if (u && targetUnit.includes(u)) return null;
+    craftUnit.push(u);
   }
-  return { units, targetUnit, benchUnit };
+  return { units, targetUnit, craftUnit };
 }
 
 /** Applies mods that are on the item before rolling (fractured, essence, fossil-forced). */
 function applyForced(ctx, model, forced, caps) {
-  const st = { hit: ctx.hard.map(() => false), benchHit: false, benchBlocked: false, removed: new Set() };
+  const crafts = ctx.crafts || [];
+  const st = { hit: ctx.hard.map(() => false), craftHit: 0, craftBlocked: 0, removed: new Set() };
   for (const m of forced) {
     caps[m.g] = Math.max(0, caps[m.g] - 1);
     for (const g of m.gr) if (model.units.has(g)) st.removed.add(model.units.get(g));
     ctx.hard.forEach((t, i) => { if (satisfies(m, t)) st.hit[i] = true; });
-    if (ctx.benchTarget) {
-      if (satisfies(m, ctx.benchTarget)) st.benchHit = true;
-      else if (m.gr.some((g) => ctx.benchTarget.groups.includes(g))) st.benchBlocked = true;
-    }
+    crafts.forEach((c, j) => {
+      if (satisfies(m, c)) st.craftHit |= 1 << j;
+      else if (m.gr.some((g) => c.groups.includes(g))) st.craftBlocked |= 1 << j;
+    });
   }
+  st.craftBlocked &= ~st.craftHit;
   return st;
 }
 
 /** Splits units into per-side "others" (grouped by weight) and the special units of one scenario. */
-function sides(model, removed, needs, excludes, caps, benchSide) {
+function sides(model, removed, needs, excludes, caps, maxFinal) {
   const special = new Set([...needs.map((n) => n.u), ...excludes]);
   const out = {};
   for (const side of ["p", "s"]) {
@@ -74,14 +87,15 @@ function sides(model, removed, needs, excludes, caps, benchSide) {
       if (!byW.has(key)) byW.set(key, { w: u.w, m: 0 });
       byW.get(key).m++;
     }
-    out[side] = {
+    const S = {
       cap: caps[side],
+      maxFinal: maxFinal[side], // the finished item may have at most this many mods on this side
       classes: [...byW.values()],
       needs: needs.filter((n) => n.u.side === side).map((n) => ({ w: n.u.w, q: n.q })),
       excl: excludes.filter((u) => u.side === side).map((u) => u.w),
-      fullAllowed: benchSide !== side, // the bench craft needs a free slot on its side
     };
-    out[side].units = out[side].classes.reduce((a, c) => a + c.m, 0) + out[side].needs.length + out[side].excl.length;
+    S.units = S.classes.reduce((a, c) => a + c.m, 0) + S.needs.length + S.excl.length;
+    out[side] = S;
   }
   return out;
 }
@@ -151,15 +165,17 @@ function sideAt(S, t) {
 /** P(conditions hold on the finished item) for every number of rolled mods d in ds. */
 function eventProbs(sd, ds) {
   const X = sd.p, Y = sd.s;
+  const res = new Map(ds.map((d) => [d, 0]));
+  if (X.maxFinal < 0 || Y.maxFinal < 0) return res;
   let wTot = 0, wMin = Infinity;
   for (const S of [X, Y]) {
+    if (S.cap === 0) continue;
     for (const k of S.classes) { wTot += k.w * k.m; wMin = Math.min(wMin, k.w); }
     for (const n of S.needs) { wTot += n.w; wMin = Math.min(wMin, n.w); }
     for (const w of S.excl) { wTot += w; wMin = Math.min(wMin, w); }
   }
-  const res = new Map(ds.map((d) => [d, 0]));
   if (!(wTot > 0)) {
-    for (const d of ds) res.set(d, finalNoDraw(sd, d, true));
+    for (const d of ds) res.set(d, nothingRolls(sd));
     return res;
   }
   const s0 = Math.log(GRID_START / wTot), s1 = Math.log(GRID_END / wMin);
@@ -183,21 +199,21 @@ function eventProbs(sd, ds) {
     return out;
   };
   const fullX = fullOf("x", X), fullY = fullOf("y", Y);
-  const g = (S, side, i, b) => {
-    if (b < 0 || b > S.cap) return 0;
-    if (S.cap === 0) return S.needs.length || !S.fullAllowed ? 0 : 1;
-    if (b < S.cap) return side.G[b];
-    return S.fullAllowed ? (S === X ? fullX[i] : fullY[i]) : 0;
+  // P(the side has b mods at t and meets its conditions)
+  const g = (S, side, full, i, b) => {
+    if (b < 0 || b > S.cap || b > S.maxFinal) return 0;
+    if (S.cap === 0) return S.needs.length ? 0 : 1;
+    return b < S.cap ? side.G[b] : full[i];
   };
   for (const d of ds) {
-    if (d <= 0) { res.set(d, finalNoDraw(sd, d, false)); continue; }
+    if (d <= 0) { res.set(d, nothingRolls(sd)); continue; }
     let sum = 0;
     for (let i = 0; i <= n; i++) {
       const pt = pts[i];
       let v = 0;
-      for (const [Z, z, W, wk] of [[X, pt.x, Y, pt.y], [Y, pt.y, X, pt.x]]) {
-        const maxA = Z.cap - 1 - (Z.fullAllowed ? 0 : 1);
-        for (let a = 0; a <= maxA && a < d; a++) v += z.F[a] * g(W, wk, i, d - 1 - a);
+      for (const [Z, z, W, wk, wf] of [[X, pt.x, Y, pt.y, fullY], [Y, pt.y, X, pt.x, fullX]]) {
+        const maxA = Math.min(Z.cap, Z.maxFinal) - 1;
+        for (let a = 0; a <= maxA && a < d; a++) v += z.F[a] * g(W, wk, wf, i, d - 1 - a);
       }
       const wgt = i === 0 || i === n ? 1 : i % 2 ? 4 : 2;
       sum += wgt * v * pt.t;
@@ -213,31 +229,30 @@ function eventProbs(sd, ds) {
 
 // a side once every one of its groups has rung (only used when the pool runs dry)
 function endState(S, full) {
-  if (S.units > S.cap) return S.fullAllowed ? full : 0;
+  const k = Math.min(S.cap, S.units);
+  if (k > S.maxFinal) return 0;
+  if (S.units > S.cap) return full;
   if (S.excl.length) return 0;
-  if (!S.fullAllowed && S.units >= S.cap) return 0;
   return S.needs.reduce((a, n) => a * n.q, 1);
 }
 
 // no mods are rolled at all (forced mods already fill the count)
-function finalNoDraw(sd) {
-  for (const S of [sd.p, sd.s]) {
-    if (S.needs.length) return 0;
-    if (!S.fullAllowed && S.cap <= 0) return 0;
-  }
-  return 1;
+function nothingRolls(sd) {
+  return sd.p.needs.length || sd.s.needs.length ? 0 : 1;
 }
 
 /**
  * Exact chance that one full reroll (chaos, essence, fossil) meets every hard target and leaves room for the
- * bench craft. Returns null when the case isn't handled exactly.
+ * bench crafts. Uses ctx.caps / ctx.counts when set (for rerolls that keep one side). Null when not handled.
  */
 export function exactReroll(ctx, entries, forced) {
   if (ctx.hard.length > MAX_EXACT_TARGETS) return null;
   const model = buildUnits(ctx, entries);
   if (!model) return null;
-  const caps = { ...maxAffixes(ctx.base) };
+  const crafts = ctx.crafts || [];
+  const caps = { ...(ctx.caps || maxAffixes(ctx.base)) };
   const st = applyForced(ctx, model, forced, caps);
+  if (st.craftBlocked) return { p: 0 };
   const needs = [];
   for (let i = 0; i < ctx.hard.length; i++) {
     if (st.hit[i]) continue;
@@ -245,21 +260,29 @@ export function exactReroll(ctx, entries, forced) {
     if (!u || st.removed.has(u)) return { p: 0 };
     needs.push({ u, q: u.sat[i] / u.w });
   }
-  const scenarios = [];
-  const bench = ctx.benchTarget && !st.benchHit ? model.benchUnit : null;
-  if (ctx.benchTarget && !st.benchHit) {
-    // the bench mod's group rolls with a good enough tier: no craft needed
-    if (bench && bench.benchSat > 0 && !st.removed.has(bench)) scenarios.push({ needs: [...needs, { u: bench, q: bench.benchSat / bench.w }], excl: [], benchSide: null });
-    // or it doesn't roll, and a slot stays free on its side
-    if (!st.benchBlocked) scenarios.push({ needs, excl: bench && !st.removed.has(bench) ? [bench] : [], benchSide: ctx.benchTarget.side });
-  } else scenarios.push({ needs, excl: [], benchSide: null });
-
-  const counts = rareModCounts(ctx.base);
+  // every open craft either rolls naturally with a good enough tier, or doesn't roll and gets a free slot
+  const open = crafts.map((_, j) => j).filter((j) => !(st.craftHit & (1 << j)));
+  const counts = ctx.counts;
   const ds = counts.map(([n]) => n - forced.length);
   let p = 0;
-  for (const sc of scenarios) {
-    const sd = sides(model, st.removed, sc.needs, sc.excl, caps, sc.benchSide);
-    const probs = eventProbs(sd, ds);
+  for (let combo = 0; combo < 1 << open.length; combo++) {
+    const scNeeds = [...needs], excl = [];
+    let missing = 0, possible = true;
+    open.forEach((j, k) => {
+      const u = model.craftUnit[j];
+      const present = u && !st.removed.has(u);
+      if (combo & (1 << k)) {
+        if (!present || !(u.craftSat[j] > 0)) possible = false;
+        else scNeeds.push({ u, q: u.craftSat[j] / u.w });
+      } else {
+        missing |= 1 << j;
+        if (present) excl.push(u);
+      }
+    });
+    if (!possible) continue;
+    const r = craftReserve(crafts, missing, ctx.multimodSide, ctx.reserve);
+    const maxFinal = { p: caps.p - r.p, s: caps.s - r.s };
+    const probs = eventProbs(sides(model, st.removed, scNeeds, excl, caps, maxFinal), ds);
     counts.forEach(([n, w]) => { p += w * probs.get(n - forced.length); });
   }
   return { p: Math.min(1, p) };
@@ -270,96 +293,114 @@ export function exactReroll(ctx, entries, forced) {
 /**
  * Exact odds for the alteration route when it has at most two hard targets: stage 1 (alteration with an
  * augmentation when only one of the stage-1 mods shows up) and stage 2 (regal, then exalts while the
- * missing mods can still fit), following the same rules as the simulation in craft.js.
+ * missing mods can still fit), following the same rules as the simulation in craft.js. With a block
+ * variant ({tag, side}), a "Cannot roll ... Modifiers" craft goes on after the regal when there is room,
+ * and the exalts skip mods with that tag.
  */
-export function exactAltRegal(ctx, s1) {
+export function exactAltRegal(ctx, s1, block = null) {
   if (ctx.hard.length > MAX_EXACT_TARGETS || ctx.fixedEntries.length) return null;
-  const model = buildUnits(ctx, ctx.pool);
+  const model = buildUnits(ctx, ctx.pool, block?.tag);
   if (!model) return null;
+  const crafts = ctx.crafts || [];
   const units = [...model.units.values()];
   const W = { p: 0, s: 0 };
   for (const u of units) W[u.side] += u.w;
   const Wt = W.p + W.s;
   if (!(Wt > 0)) return null;
   const s1u = s1.map((x) => ({ i: x.i, u: model.targetUnit[x.i] }));
+  if (!s1u.length) return null;
   if (s1u.some((x) => !x.u)) return { p1: 0, p2: 0, augPerAlt: 0, avgExalts: 0 };
   const sat = (x) => x.u.sat[x.i];
   const other = (side) => (side === "p" ? "s" : "p");
+  const isRole = (u) => u.sat.some((x) => x > 0) || model.craftUnit.includes(u);
 
-  // stage 1: distribution of successful magic items, as lists of [unit, satisfied?] pairs
-  const starts = []; // {p, mods: [{u, kind}]}, kind as in outcomes()
+  // stage 1: distribution of successful magic items, as lists of {unit, kind}
+  const starts = [];
   let augPerAlt = 0;
-  const single = MAGIC_TWO_MOD_CHANCE, one = 1 - MAGIC_TWO_MOD_CHANCE;
+  const two = MAGIC_TWO_MOD_CHANCE, one = 1 - MAGIC_TWO_MOD_CHANCE;
   if (s1u.length === 2) {
     const [A, B] = s1u;
     // both mods, in either order; with one mod the augmentation adds the other side, with the same odds
     const pAB = (sat(A) / Wt) * (sat(B) / W[B.u.side]) + (sat(B) / Wt) * (sat(A) / W[A.u.side]);
     starts.push({ p: pAB, mods: [{ u: A.u, kind: { target: A.i } }, { u: B.u, kind: { target: B.i } }] });
-    augPerAlt = one * (sat(A) + sat(B)) / Wt;
-  } else if (s1u.length === 1) {
+    augPerAlt = (one * (sat(A) + sat(B))) / Wt;
+  } else {
     const [A] = s1u;
     const os = other(A.u.side);
     starts.push({ p: one * (sat(A) / Wt), mods: [{ u: A.u, kind: { target: A.i } }] });
     for (const v of units) {
       if (v.side !== os) continue;
-      // the other mod can itself be a good roll of the bench group
-      const kinds = v.sat.some((x) => x > 0) || v === model.benchUnit ? outcomes(ctx, model, v) : [[null, v.w]];
-      for (const [kind, w] of kinds) {
-        const pv = single * ((sat(A) / Wt) * (w / W[os]) + (w / Wt) * (sat(A) / W[A.u.side]));
+      // the other mod can itself be a good roll of a bench craft
+      for (const [kind, w] of isRole(v) ? outcomes(model, v, false) : [[null, v.w]]) {
+        const pv = two * ((sat(A) / Wt) * (w / W[os]) + (w / Wt) * (sat(A) / W[A.u.side]));
         if (pv > 0) starts.push({ p: pv, mods: [{ u: A.u, kind: { target: A.i } }, { u: v, kind }] });
       }
     }
-  } else return null;
+  }
   const p1 = starts.reduce((a, s) => a + s.p, 0);
   if (!(p1 > 0)) return { p1: 0, p2: 0, augPerAlt, avgExalts: 0 };
 
   // stage 2: regal + exalts, exact over every reachable item (at most 4 more mods). Groups without a role
-  // are interchangeable when they share side and weight, so the state counts how many of each class are taken.
+  // are interchangeable when they share side and weights, so the state counts how many of each class are taken.
   const rare = maxAffixes(ctx.base);
-  const bench = ctx.benchTarget;
-  const benchSide = bench ? bench.side : null;
-  const isRole = (u) => u.sat.some((x) => x > 0) || u === model.benchUnit;
   const roles = units.filter(isRole);
   const classes = [];
   const classOf = new Map();
   for (const u of units) {
     if (isRole(u)) continue;
-    const key = u.side + ":" + u.w.toPrecision(12);
-    if (!classOf.has(key)) { classOf.set(key, classes.length); classes.push({ side: u.side, w: u.w, m: 0 }); }
+    const key = u.side + ":" + u.w.toPrecision(12) + ":" + u.x.w.toPrecision(12);
+    if (!classOf.has(key)) { classOf.set(key, classes.length); classes.push({ side: u.side, w: u.w, wx: u.x.w, m: 0 }); }
     classes[classOf.get(key)].m++;
     classOf.set(u, classOf.get(key));
   }
+  const allCrafts = (1 << crafts.length) - 1;
+  const fits = (st, missing, metaRoom) => {
+    const r = craftReserve(crafts, missing, ctx.multimodSide, ctx.reserve);
+    return st.n.p + r.p <= rare.p + (metaRoom === "p" ? 1 : 0) && st.n.s + r.s <= rare.s + (metaRoom === "s" ? 1 : 0);
+  };
   const memo = new Map();
   // returns {ps: chance to finish, ex: expected exalts still to use}
   const solve = (st, regal) => {
-    const key = st.c.join(",") + "|" + st.roles + "|" + st.hit.join("") + "|" + +st.benchHit + +st.benchBlocked + "|" + +regal;
-    const hitMemo = memo.get(key);
-    if (hitMemo) return hitMemo;
-    const done = st.hit.every(Boolean) && (!bench || st.benchHit || (st.n[benchSide] < rare[benchSide] && !st.benchBlocked));
+    const key = st.c.join(",") + "|" + st.roles + "|" + st.hit.join("") + "|" + st.craftHit + "," + st.craftBlocked + "|" + +st.meta + +regal;
+    const known = memo.get(key);
+    if (known) return known;
+    // the meta craft fills a slot while it's on the item; it comes off before the bench crafts
+    const capOf = (side) => rare[side] - (st.meta && block.side === side ? 1 : 0);
+    const missing = allCrafts & ~st.craftHit;
+    const done = st.hit.every(Boolean) && !(missing & st.craftBlocked) && fits(st, missing, null);
     let res;
     if (!regal && done) res = { ps: 1, ex: 0 };
-    else {
+    else if (!regal) {
       const need = { p: 0, s: 0 };
       ctx.hard.forEach((t, i) => { if (!st.hit[i]) need[t.side]++; });
-      if (bench && !st.benchHit && !st.benchBlocked) need[benchSide]++;
-      if (!regal && (need.p > rare.p - st.n.p || need.s > rare.s - st.n.s || st.n.p + st.n.s >= rare.p + rare.s)) res = { ps: 0, ex: 0 };
+      const r = craftReserve(crafts, missing & ~st.craftBlocked, ctx.multimodSide, ctx.reserve);
+      const free = (side) => capOf(side) - st.n[side];
+      if (need.p > free("p") || need.s > free("s") || need.p + r.p > rare.p - st.n.p || need.s + r.s > rare.s - st.n.s || free("p") + free("s") <= 0) res = { ps: 0, ex: 0 };
     }
     if (!res) {
+      const filtered = st.meta && !regal;
+      const open = (side) => st.n[side] < capOf(side);
       let tot = 0;
-      const open = (side) => st.n[side] < rare[side];
-      classes.forEach((k, i) => { if (open(k.side)) tot += (k.m - st.c[i]) * k.w; });
-      roles.forEach((u, r) => { if (open(u.side) && !(st.roles & (1 << r))) tot += u.w; });
+      classes.forEach((k, i) => { if (open(k.side)) tot += (k.m - st.c[i]) * (filtered ? k.wx : k.w); });
+      roles.forEach((u, r) => { if (open(u.side) && !(st.roles & (1 << r))) tot += filtered ? u.x.w : u.w; });
       if (!(tot > 0)) res = { ps: done ? 1 : 0, ex: 0 };
       else {
         let ps = 0, ex = 0;
-        const go = (child, pr) => { const c = solve(child, false); ps += pr * c.ps; ex += pr * c.ex; };
+        const go = (child, pr) => {
+          // right after the regal, put the meta craft on if there's room for it
+          if (regal && block) child.meta = child.n[block.side] < rare[block.side];
+          const c = solve(child, false);
+          ps += pr * c.ps;
+          ex += pr * c.ex;
+        };
         classes.forEach((k, i) => {
           const left = k.m - st.c[i];
-          if (left > 0 && open(k.side)) go(addPlain(st, i, k.side), (left * k.w) / tot);
+          const w = filtered ? k.wx : k.w;
+          if (left > 0 && open(k.side) && w > 0) go(addPlain(st, i, k.side), (left * w) / tot);
         });
         roles.forEach((u, r) => {
           if (!open(u.side) || st.roles & (1 << r)) return;
-          for (const [kind, w] of outcomes(ctx, model, u)) if (w > 0) go(addRole(st, r, u, kind, model), w / tot);
+          for (const [kind, w] of outcomes(model, u, filtered)) if (w > 0) go(addRole(st, r, u, kind, model), w / tot);
         });
         res = { ps, ex: ex + (regal ? 0 : 1) };
       }
@@ -369,7 +410,7 @@ export function exactAltRegal(ctx, s1) {
   };
   let p2 = 0, avgExalts = 0;
   for (const s of starts) {
-    let st = { c: classes.map(() => 0), roles: 0, n: { p: 0, s: 0 }, hit: ctx.hard.map(() => false), benchHit: false, benchBlocked: false };
+    let st = { c: classes.map(() => 0), roles: 0, n: { p: 0, s: 0 }, hit: ctx.hard.map(() => false), craftHit: 0, craftBlocked: 0, meta: false };
     for (const m of s.mods) {
       const r = roles.indexOf(m.u);
       st = r >= 0 ? addRole(st, r, m.u, m.kind, model) : addPlain(st, classOf.get(m.u), m.u.side);
@@ -379,6 +420,19 @@ export function exactAltRegal(ctx, s1) {
     avgExalts += (s.p / p1) * res.ex;
   }
   return { p1, p2, augPerAlt, avgExalts };
+}
+
+// ways a unit with a role can roll: [{target?, craft?} | null, weight]
+function outcomes(model, u, filtered) {
+  const part = filtered ? u.x : u;
+  const out = [];
+  let rest = part.w;
+  part.sat.forEach((w, i) => { if (w > 0) { out.push([{ target: i }, w]); rest -= w; } });
+  model.craftUnit.forEach((cu, j) => {
+    if (cu === u && part.craftSat[j] > 0) { out.push([{ craft: j }, part.craftSat[j]]); rest -= part.craftSat[j]; }
+  });
+  if (rest > 1e-9 * u.w) out.push([null, rest]);
+  return out;
 }
 
 function addPlain(st, i, side) {
@@ -392,16 +446,10 @@ function addRole(st, r, u, kind, model) {
   const s = { ...st, n: { ...st.n }, hit: [...st.hit], roles: st.roles | (1 << r) };
   s.n[u.side]++;
   if (kind && kind.target !== undefined) s.hit[kind.target] = true;
-  if (u === model.benchUnit) { if (kind && kind.bench) s.benchHit = true; else s.benchBlocked = true; }
+  model.craftUnit.forEach((cu, j) => {
+    if (cu !== u) return;
+    if (kind && kind.craft === j) s.craftHit |= 1 << j;
+    else s.craftBlocked |= 1 << j;
+  });
   return s;
-}
-
-// ways a unit with a role can roll: [{target}|{bench}|{none}, weight]
-function outcomes(ctx, model, u) {
-  const out = [];
-  let rest = u.w;
-  u.sat.forEach((w, i) => { if (w > 0) { out.push([{ target: i, bench: u === model.benchUnit && u.benchSat > 0 }, w]); rest -= w; } });
-  if (u === model.benchUnit && u.benchSat > 0 && !u.sat.some((x) => x > 0)) { out.push([{ bench: true }, u.benchSat]); rest -= u.benchSat; }
-  if (rest > 1e-9 * u.w) out.push([null, rest]);
-  return out;
 }

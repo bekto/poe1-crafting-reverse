@@ -1,5 +1,14 @@
 // Loads and indexes the compact game data produced by tools/build_data.py.
 
+// mod groups of the crafting bench's meta crafts
+export const META_GROUPS = {
+  multimod: "ItemGenerationCanHaveMultipleCraftedMods",
+  lockPrefixes: "ItemGenerationCannotChangePrefixes",
+  lockSuffixes: "ItemGenerationCannotChangeSuffixes",
+  noAttack: "ItemGenerationCannotRollAttackAffixes",
+  noCaster: "ItemGenerationCannotRollCasterAffixes",
+};
+
 export const INFLUENCES = ["shaper", "elder", "crusader", "hunter", "redeemer", "warlord"];
 
 export function indexData(raw) {
@@ -35,6 +44,12 @@ export function indexData(raw) {
       if (!db.benchByClass.has(cls)) db.benchByClass.set(cls, []);
       db.benchByClass.get(cls).push({ mod: db.modById.get(modId), cost: info.cost, tier: info.tier });
     }
+  }
+  // bench meta crafts, found by mod group so a renamed mod id doesn't break them
+  db.meta = {};
+  for (const [key, group] of Object.entries(META_GROUPS)) {
+    const id = Object.keys(raw.bench).find((mid) => db.modById.get(mid)?.gr.includes(group));
+    if (id) db.meta[key] = { mod: db.modById.get(id), cost: raw.bench[id].cost };
   }
   // longest names first so "Two-Stone Ring" wins over "Ring" style substrings
   db.baseNamesSorted = [...db.basesByName.keys()].sort((a, b) => b.length - a.length);

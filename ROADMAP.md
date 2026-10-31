@@ -15,7 +15,8 @@ Work top to bottom. Each item is done when its acceptance check passes, the test
   - Notes: `engine/exact.js`: exponential-clock integral for rerolls (chaos/essence/fossil, with bench and forced mods), memoised DP over weight classes for the alteration route. Matches brute force to ~1e-8 (`test/reference.mjs`); falls back to simulation for 3+ mods or groups spanning both sides.
 
 ## Phase 2: more crafting methods
-- [ ] **Multimod and metacrafting.** Add "Can have up to 3 Crafted Modifiers" (it uses a suffix), "Prefixes/Suffixes Cannot Be Changed" plus Scour or Chaos, and "Cannot Roll Attack/Caster Mods" with Exalts. Put bench costs in steps from `bench` data.
+- [x] **Multimod and metacrafting.** Add "Can have up to 3 Crafted Modifiers" (it uses a suffix), "Prefixes/Suffixes Cannot Be Changed" plus Scour or Chaos, and "Cannot Roll Attack/Caster Mods" with Exalts. Put bench costs in steps from `bench` data.
+  - Notes: up to 2 bench crafts + multimod (exact and simulated), side lock + Chaos as a two-stage method, attack/caster block for the exalt stage; engine split into sim.js / craft.js / steps.js; meta crafts found by mod group in `db.meta`. 33 reference checks.
 - [ ] **Harvest reforges.** Add "Reforge with a guaranteed X modifier" for each tag and "Reforge keeping prefixes/suffixes". This data isn't in RePoE, so write `public/data/manual/harvest.json` with sources. Mark it as approximate in the UI.
 - [ ] **Annulment-aware alteration route.** When an exalt misses, compare annulling with starting over, and report the cheaper choice.
 - [ ] **Awakener's Orb and Conqueror's Exalts.** Plan for items with two influences, or mods that need an influence.
