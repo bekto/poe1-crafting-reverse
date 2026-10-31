@@ -16,7 +16,10 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 
-API = "https://poe.ninja/api/data"
+# poe.ninja has moved its API before; the first base and index path that answer are used
+API_BASES = ["https://poe.ninja/api/data", "https://poe.ninja/poe1/api/data"]
+INDEX_PATHS = ["getindexstate", "index-state", "economy/index-state"]
+API = API_BASES[0]
 USER_AGENT = "reverse-crafter-prices/1.0 (static PoE crafting planner; hourly GitHub Action; contact via the repository's issues)"
 # poe.ninja overview types with items the planner prices
 CURRENCY_TYPES = ["Currency"]
@@ -34,8 +37,26 @@ def get(path, fixtures=None):
         return json.load(r)
 
 
+def find_api(fixtures=None):
+    """Picks the API base and index path that answer, reporting each try (GitHub annotations)."""
+    global API
+    if fixtures:
+        return "getindexstate"
+    for base in API_BASES:
+        for path in INDEX_PATHS:
+            API = base
+            try:
+                get(path)
+                print(f"::notice title=poe.ninja API::{base}/{path} works")
+                return path
+            except urllib.error.HTTPError as e:
+                print(f"::notice title=poe.ninja API::{base}/{path} -> HTTP {e.code}")
+            time.sleep(1)
+    raise SystemExit("no poe.ninja index endpoint answered; see the notices above")
+
+
 def current_league(fixtures=None):
-    state = get("getindexstate", fixtures)
+    state = get(find_api(fixtures), fixtures)
     for lg in state.get("economyLeagues", []):
         name = lg.get("name", "")
         if name and "Hardcore" not in name and name not in ("Standard",) and "SSF" not in name:
@@ -77,6 +98,8 @@ def main(argv):
             fixtures = args.pop(0)
         else:
             out = Path(a)
+    if league:
+        find_api(fixtures)
     league = league or current_league(fixtures)
     prices = fetch(league, fixtures)
     if "Divine Orb" not in prices:
