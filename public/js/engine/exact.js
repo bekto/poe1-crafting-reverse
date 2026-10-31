@@ -10,7 +10,7 @@
 import { satisfies, maxAffixes, craftReserve } from "./pool.js";
 import { MAGIC_TWO_MOD_CHANCE } from "./assumptions.js";
 
-export const MAX_EXACT_TARGETS = 2;
+export const MAX_EXACT_TARGETS = 6;
 // log-time grid for the integral: step and range (in multiples of the fastest/slowest clock)
 const GRID_STEP = 0.04;
 const GRID_START = 1e-10; // × 1 / total weight
@@ -100,65 +100,76 @@ function sides(model, removed, needs, excludes, caps, maxFinal) {
   return out;
 }
 
-function binomRow(m, p, len) {
-  // P(exactly j of m clocks have rung), j < len
-  const row = new Float64Array(len);
-  const q = 1 - p;
-  let c = 1;
-  for (let j = 0; j < len && j <= m; j++) {
-    row[j] = c * Math.pow(p, j) * Math.pow(q, m - j);
-    c = (c * (m - j)) / (j + 1);
-  }
-  return row;
-}
-
-function conv(a, b, len) {
-  const out = new Float64Array(len);
-  for (let i = 0; i < len; i++) { if (!a[i]) continue; for (let j = 0; i + j < len; j++) out[i + j] += a[i] * b[j]; }
-  return out;
-}
-
 /**
  * For one side at time t: G[j] = P(exactly j groups rang and the wanted/excluded conditions hold), j < cap;
  * F[a] = density of a group ringing at t with exactly a rung before, the a+1 of them meeting the conditions.
  */
+// scratch buffers for sideAt, reused between calls (the integral calls it a few thousand times per plan)
+let scratch = new Float64Array(0);
+function buffer(n) { if (scratch.length < n) scratch = new Float64Array(n * 2); return scratch; }
+
+// P(exactly j of m clocks have rung), j < c, written into buf at off
+function binomInto(buf, off, m, p, c) {
+  const q = 1 - p;
+  let coef = 1;
+  for (let j = 0; j < c; j++) {
+    buf[off + j] = j <= m ? coef * Math.pow(p, j) * Math.pow(q, m - j) : 0;
+    coef = (coef * (m - j)) / (j + 1);
+  }
+}
+
+// out = a * b truncated to c terms (all at offsets in buf)
+function convInto(buf, out, a, b, c) {
+  for (let i = 0; i < c; i++) {
+    let v = 0;
+    for (let j = 0; j <= i; j++) v += buf[a + j] * buf[b + i - j];
+    buf[out + i] = v;
+  }
+}
+
 function sideAt(S, t) {
   const c = S.cap;
   const G = new Float64Array(Math.max(c, 1)), F = new Float64Array(Math.max(c, 1));
   if (c === 0) return { G, F };
-  const p = S.classes.map((k) => -Math.expm1(-k.w * t));
-  const rows = S.classes.map((k, i) => binomRow(k.m, p[i], c));
-  const rowsLess = S.classes.map((k, i) => binomRow(k.m - 1, p[i], c));
+  const K = S.classes.length;
+  // layout: rows[K], rowsLess[K], pre[K+1], suf[K+1], tmp, tmp2 — each c long
+  const ROWS = 0, LESS = K * c, PRE = 2 * K * c, SUF = PRE + (K + 1) * c, TMP = SUF + (K + 1) * c, TMP2 = TMP + c;
+  const buf = buffer(TMP2 + c);
+  for (let k = 0; k < K; k++) {
+    const cls = S.classes[k];
+    const p = -Math.expm1(-cls.w * t);
+    binomInto(buf, ROWS + k * c, cls.m, p, c);
+    binomInto(buf, LESS + k * c, cls.m - 1, p, c);
+  }
   // prefix/suffix products so "all classes but one unit of class k" costs O(K)
-  const K = rows.length;
-  const one = new Float64Array(c); one[0] = 1;
-  const pre = [one];
-  for (let k = 0; k < K; k++) pre.push(conv(pre[k], rows[k], c));
-  const suf = new Array(K + 1); suf[K] = one;
-  for (let k = K - 1; k >= 0; k--) suf[k] = conv(suf[k + 1], rows[k], c);
-  const Q = pre[K];
+  for (let j = 0; j < c; j++) { buf[PRE + j] = j === 0 ? 1 : 0; buf[SUF + K * c + j] = j === 0 ? 1 : 0; }
+  for (let k = 0; k < K; k++) convInto(buf, PRE + (k + 1) * c, PRE + k * c, ROWS + k * c, c);
+  for (let k = K - 1; k >= 0; k--) convInto(buf, SUF + k * c, SUF + (k + 1) * c, ROWS + k * c, c);
+  const Q = PRE + K * c;
   let NA = 1;
   const np = S.needs.map((n) => -Math.expm1(-n.w * t) * n.q);
   for (const v of np) NA *= v;
   let EX = 1;
   for (const w of S.excl) EX *= Math.exp(-w * t);
   const nN = S.needs.length;
-  for (let j = nN; j < c; j++) G[j] = NA * EX * Q[j - nN];
+  for (let j = nN; j < c; j++) G[j] = NA * EX * buf[Q + j - nN];
   // an "other" group rings at t
   for (let k = 0; k < K; k++) {
     const cls = S.classes[k];
     const dens = cls.m * cls.w * Math.exp(-cls.w * t);
     if (!(dens > 0)) continue;
-    const Qk = conv(conv(pre[k], rowsLess[k], c), suf[k + 1], c);
-    for (let a = nN; a < c; a++) F[a] += dens * NA * EX * Qk[a - nN];
+    convInto(buf, TMP, PRE + k * c, LESS + k * c, c);
+    convInto(buf, TMP2, TMP, SUF + (k + 1) * c, c);
+    for (let a = nN; a < c; a++) F[a] += dens * NA * EX * buf[TMP2 + a - nN];
   }
   // a wanted group rings at t (with the wanted tier)
-  S.needs.forEach((n, v) => {
+  for (let v = 0; v < nN; v++) {
+    const n = S.needs[v];
     let others = 1;
-    np.forEach((x, u) => { if (u !== v) others *= x; });
+    for (let u = 0; u < nN; u++) if (u !== v) others *= np[u];
     const dens = n.w * Math.exp(-n.w * t) * n.q * others * EX;
-    for (let a = nN - 1; a < c; a++) F[a] += dens * Q[a - nN + 1];
-  });
+    for (let a = nN - 1; a < c; a++) F[a] += dens * buf[Q + a - nN + 1];
+  }
   return { G, F };
 }
 

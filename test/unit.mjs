@@ -425,7 +425,7 @@ test("exact engine matches brute force on an uneven pool (reroll and alteration 
   near(ex.avgExalts, bf.avgExalts, 1e-9);
 });
 
-test("planner uses exact odds for 1-2 wanted mods and simulation for more", async () => {
+test("planner uses exact odds where the engine can represent the pool, simulation otherwise", async () => {
   const { planCraft } = await import("../public/js/engine/craft.js");
   const { ITEMS } = await import("../public/js/samples.js");
   const { item, ident } = parse(ITEMS.ring);
@@ -437,7 +437,11 @@ test("planner uses exact odds for 1-2 wanted mods and simulation for more", asyn
   const again = planCraft(db, item.base, item.ilvl, [], want([0, 3]), [], { refineMs: 0 });
   eq(again.methods.find((m) => m.kind === "chaos").p, chaos.p, "no noise between runs");
   const three = planCraft(db, item.base, item.ilvl, [], want([0, 3, 5]), [], { refineMs: 0, trials: 2000 });
-  ok(three.methods.filter((m) => ["chaos", "essence", "fossil"].includes(m.kind)).every((m) => !m.exact), "3 targets use simulation");
+  ok(three.methods.filter((m) => !m.approximate).every((m) => m.exact), "3 targets are exact too");
+  // a jewel mod group with both prefix and suffix mods: the exact engine can't represent it, so it simulates
+  const jw = parse(ITEMS.jewel);
+  const jp = planCraft(db, jw.item.base, jw.item.ilvl, [], jw.ident.mods.map((m) => ({ mod: m.mod, minMod: m.mod })), [], { refineMs: 0, trials: 2000 });
+  ok(jp.methods.some((m) => m.kind === "chaos" && !m.exact), "jewel falls back to simulation");
 });
 
 test("exact odds of an impossible target are exactly zero", async () => {

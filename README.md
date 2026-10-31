@@ -71,8 +71,8 @@ test/                  Node and Playwright checks
 
 The engine uses the game's spawn weights, mod groups (an item can't have two mods from the same group), affix limits and item level.
 
-- **Exact odds** (marked "exact") for crafts with one or two wanted mods (`public/js/engine/exact.js`). Rolling mods one by one, with chance proportional to weight, works the same as giving each mod group a random "clock" and taking groups in the order their clocks ring. In that picture prefixes and suffixes are independent, so the chance comes from a one-dimensional integral that the engine computes numerically to about 1 part in a million. Bench crafts, essences, fossil-forced mods and fractured mods are included. The alteration route is worked out by going through every possible item, with interchangeable mods grouped together.
-- **Simulation** for three or more wanted mods, or for pools the exact method doesn't handle (for example a jewel mod group that can be a prefix or a suffix). The engine simulates the craft thousands of times and then spends extra time on the most promising methods. When an estimate rests on fewer than 30 successful simulations, the UI marks it as a "rough estimate".
+- **Exact odds** (marked "exact") whenever the mod pool has the usual structure: every mod in one group, every group on one side, and every wanted mod met by a single group (`public/js/engine/exact.js`). That covers almost every item, with any number of wanted mods. Rolling mods one by one, with chance proportional to weight, works the same as giving each mod group a random "clock" and taking groups in the order their clocks ring. In that picture prefixes and suffixes are independent, so the chance comes from a one-dimensional integral that the engine computes numerically to about 1 part in a million. Bench crafts, essences, fossil-forced mods and fractured mods are included. The alteration route is worked out by going through every possible item, with interchangeable mods grouped together.
+- **Simulation** for pools the exact method doesn't handle (for example a jewel mod group that can be a prefix or a suffix), and for the annul-on-miss comparison. The engine simulates the craft thousands of times and then spends extra time on the most promising methods. When an estimate rests on fewer than 30 successful simulations, the UI marks it as a "rough estimate".
 
 The planner currently covers:
 
@@ -87,6 +87,7 @@ The planner currently covers:
 - Veiled mods (the `unveiled` mod domain): Veiled Chaos Orb then unveil, or Aisling on an item that has the rest, for one wanted unveiled mod; unveiling picks the mod from Jun's 3 options
 - Recombinators (advanced, approximate; `public/data/manual/recombinator.json`): up to 2 prefixes and 2 suffixes split over two magic items, then a Recombinator that has to keep every pooled mod
 - The league mechanic, from `public/data/manual/league.json` (tag reforges and keep-side reforges can be listed there). For 3.29 the file lists no crafts yet, because the rules couldn't be checked, and the page says so.
+- Performance: a plan takes under about 2.5 seconds (`node test/perf.mjs` times every sample with all of its mods wanted). Whatever time is left after the first pass refines the simulated estimates.
 - Bench crafts at the end: one, or two with "Can have up to 3 Crafted Modifiers" (shown as "+ multimod"), with a check that the free slots are left. Bench costs come from the game data.
 
 ### Assumptions to verify

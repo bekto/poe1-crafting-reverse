@@ -15,6 +15,10 @@ export { currencyName } from "./steps.js";
 
 // how many of the best variants with multimod to keep next to the single-craft plans
 const MULTIMOD_VARIANTS_KEPT = 4;
+// Harvest tag reforges worked out per plan (the most promising by weight share)
+const HARVEST_TAGS_KEPT = 4;
+// time for one whole plan; whatever is left after the first pass refines the simulated estimates
+export const PLAN_TIME_BUDGET_MS = 2500;
 
 /**
  * Plan context: base, targets split into rolled ("hard") targets and bench-crafted ones.
@@ -195,13 +199,27 @@ function harvestTagMethods(ctx, trials) {
     ...(league?.crafts || []).filter((c) => c.type === "tagReforge").map((c) => ({ ...c, mult: c.moreCommonMultiplier ?? 10, approximate: true, label: `${league.mechanic}: ${c.name}`, league: true, currency: c.name })),
   ];
   const wantedTags = new Set([...ctx.hard, ...ctx.crafts].flatMap((t) => t.mod.t));
-  const out = [];
-  let seed = 300;
+  // rank the tags cheaply (how much they raise the wanted mods' share, as for fossils) and work out the best few
+  const shareOf = (entries) => {
+    const tot = entries.reduce((a, e) => a + e.w, 0);
+    let sc = 0;
+    for (const t of ctx.hard) {
+      const w = entries.filter((e) => satisfies(e.mod, t)).reduce((a, e) => a + e.w, 0);
+      sc += Math.log((w || 1e-12) / tot);
+    }
+    return sc;
+  };
+  const candidates = [];
   for (const r of crafts) {
     if (!wantedTags.has(r.tag)) continue;
     const entries = ctx.pool.map((e) => ({ mod: e.mod, w: e.mod.t.includes(r.tag) ? e.w * r.mult : e.w }));
     const first = entries.filter((e) => e.mod.t.includes(r.tag));
-    if (!first.length) continue;
+    if (first.length) candidates.push({ r, entries, first, score: shareOf(entries) });
+  }
+  candidates.sort((a, b) => b.score - a.score);
+  const out = [];
+  let seed = 300;
+  for (const { r, entries, first } of candidates.slice(0, HARVEST_TAGS_KEPT)) {
     const base = { kind: "harvest", name: r.label, harvest: r, league: !!r.league, approximate: r.approximate, text: r.text, mult: r.mult, currency: [[r.currency, r.cost ?? null]] };
     const fixed = ctx.fixedEntries.map((e) => e.mod);
     const ex = ctx.noExact ? null : exactRerollFirstFrom(ctx, entries, first, fixed);
@@ -379,6 +397,7 @@ function lockMethods(ctx, trials, wanted) {
     // Eldritch Chaos Orb with the other side's influence dominant
     ...(eldritchCapable(ctx) ? Object.entries(db.manual.eldritch.dominance).map(([kind, side]) => ({ L: side === "p" ? "s" : "p", eldritch: kind })) : []),
   ];
+  const stage1Cache = new Map(), stage2Cache = new Map(); // lockers on the same side share their sub-plans
   for (const lk of lockers) {
     const { L, meta } = lk;
     const O = L === "p" ? "s" : "p";
@@ -389,18 +408,27 @@ function lockMethods(ctx, trials, wanted) {
     // stage 1: wanted mods (and bench crafts) of side L, plus a free slot for a lock craft
     const reserve = { p: 0, s: 0 };
     if (meta) reserve[meta.mod.g]++;
-    const ctx1 = buildContext(db, ctx.base, ctx.ilvl, ctx.influences, pick(onL).concat(pickCrafts(wanted, craftL)), [], { reserve, noExact: ctx.noExact, craftMods: craftL.map((c) => c.wantedMod) });
-    const stage1 = rerollMethods(ctx1, Math.floor(trials / 2)).filter((m) => m.p > 0).sort((a, b) => b.p - a.p)[0];
+    const k1 = `${L}:${reserve.p}${reserve.s}`;
+    if (!stage1Cache.has(k1)) {
+      const c1 = buildContext(db, ctx.base, ctx.ilvl, ctx.influences, pick(onL).concat(pickCrafts(wanted, craftL)), [], { reserve, noExact: ctx.noExact, craftMods: craftL.map((c) => c.wantedMod) });
+      const best = rerollMethods(c1, Math.floor(trials / 2)).filter((m) => m.p > 0).sort((a, b) => b.p - a.p)[0] || null;
+      if (best) delete best.rerun;
+      stage1Cache.set(k1, { ctx1: c1, best });
+    }
+    const { ctx1, best: stage1 } = stage1Cache.get(k1);
     if (!stage1) continue;
     // stage 2: keeps side L; new mods only on side O. Assume side L is full apart from slots kept for crafts.
     const keptL = ctx.caps[L] - craftL.length;
     const caps = { [L]: 0, [O]: ctx.caps[O] };
     const counts = mergeCounts(ctx.counts.map(([n, p]) => [Math.min(caps[O], Math.max(LOCKED_REROLL_MIN_NEW, n - keptL)), p]));
     const pool = ctx.pool.filter((e) => e.mod.g === O);
-    const ctx2 = buildContext(db, ctx.base, ctx.ilvl, ctx.influences, pick(onO).concat(pickCrafts(wanted, craftO)), [], { caps, counts, pool, noExact: ctx.noExact, craftMods: craftO.map((c) => c.wantedMod) });
-    const r2 = rerollOdds(ctx2, ctx2.pool, [], trials, 777);
-    delete stage1.rerun;
-    delete r2.rerun;
+    if (!stage2Cache.has(L)) {
+      const c2 = buildContext(db, ctx.base, ctx.ilvl, ctx.influences, pick(onO).concat(pickCrafts(wanted, craftO)), [], { caps, counts, pool, noExact: ctx.noExact, craftMods: craftO.map((c) => c.wantedMod) });
+      const odds = rerollOdds(c2, c2.pool, [], trials, 777);
+      delete odds.rerun;
+      stage2Cache.set(L, { ctx2: c2, r2: odds });
+    }
+    const { ctx2, r2 } = stage2Cache.get(L);
     const p1 = stage1.p, p2 = r2.p;
     const tries = p1 > 0 && p2 > 0 ? 1 / p1 + 1 / p2 : null;
     const second = meta ? `"${meta.mod.x}" + Chaos Orb` : lk.eldritch ? `${db.manual.eldritch.orbs.chaos} (${eldritchName(lk.eldritch)} dominant)` : `Harvest "${lk.harvest.text}"`;
@@ -643,6 +671,7 @@ function mergeCounts(list) {
 
 // ---------------------------------------------------------------- planner
 export function planCraft(db, base, ilvl, influences, wanted, fixed = [], opts = {}) {
+  const tStart = Date.now();
   const trials = opts.trials || 20000;
   const noExact = opts.exact === false; // force Monte Carlo (used by the tests)
   const prices = opts.prices || null; // prices.json: {divine, prices: {currency name: price in Chaos Orbs}}
@@ -654,7 +683,9 @@ export function planCraft(db, base, ilvl, influences, wanted, fixed = [], opts =
   const ev = eldritchExaltVariant(ctx);
   for (const b of [...blockVariants(ctx), ...(ev ? [ev] : [])]) {
     const m = altRegalMethod(ctx, Math.floor(trials / 2), b);
-    if (m && ar && m.p > ar.p) methods.push(m);
+    // keep a variant that has better odds, or (eldritch exalts) the same odds with fewer exalts
+    const fewerExalts = b.eldritch && m && ar && m.p >= ar.p * (1 - 1e-9) && m.expectedExalts < ar.expectedExalts * (1 - 1e-6);
+    if (m && ar && (m.p > ar.p || fewerExalts)) methods.push(m);
   }
   methods.push(...lockMethods(ctx, trials, wanted));
   methods.push(...influenceExaltMethods(ctx, trials, wanted), ...awakenerMethods(ctx, trials, wanted), ...veiledMethods(ctx, trials, wanted), ...recombinatorMethods(ctx));
@@ -675,7 +706,8 @@ export function planCraft(db, base, ilvl, influences, wanted, fixed = [], opts =
       methods.push(m);
     }
   }
-  refine(methods, opts.refineMs ?? 8000);
+  // refine with whatever time is left (opts.refineMs overrides, e.g. 0 in tests)
+  refine(methods, opts.refineMs ?? Math.max(0, (opts.timeBudgetMs ?? PLAN_TIME_BUDGET_MS) - (Date.now() - tStart)));
   // derived plans that can't work are noise; the basic methods stay so the user sees they were checked
   const basic = new Set(["chaos", "essence", "fossil", "altregal", "harvest"]);
   for (let i = methods.length - 1; i >= 0; i--) if (!basic.has(methods[i].kind) && !(methods[i].p > 0)) methods.splice(i, 1);

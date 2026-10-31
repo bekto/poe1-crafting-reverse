@@ -43,7 +43,8 @@ Work top to bottom. Each item is done when its acceptance check passes, the test
   - Notes: `engine/share.js` (`#b=..&i=..&f=..&w=id~minId,..&x=..`, no escaping; every RePoE id is safe), written after planning, opened on load/hashchange (runs the plan), "Copy link" button; format documented in the README; unit + browser tests.
 - [x] **Mobile layout pass and accessibility check** (keyboard navigation, labels, contrast).
   - Notes: `test/a11y.cjs` checks a 375 px phone at every step (no sideways scroll), accessible names, WCAG AA contrast and a keyboard-only run. Fixed: the input panel was 476 px wide (grid min-width), the paste box had no name, and the "best" label now says "Cheapest" when ranking by cost.
-- [ ] **Performance.** Keep plans under 5 seconds on a mid-range laptop. Consider a Rust/WebAssembly engine only if needed.
+- [x] **Performance.** Keep plans under 5 seconds on a mid-range laptop. Consider a Rust/WebAssembly engine only if needed.
+  - Notes: `test/perf.mjs` (every sample, all mods wanted, 3.5 s budget): worst case went from 11.4 s to about 2.5 s. Exact engine extended to any number of wanted mods (brute-force checked), allocation-free integral, shared lock sub-plans, top-4 Harvest tags, one 2.5 s budget per plan. No WebAssembly needed.
 
 ## Phase 4: release
 - [ ] **3.30 data.** After November 13, once RePoE updates, rebuild `poe1.json`, run all tests and fix anything that broke.
