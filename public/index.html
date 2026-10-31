@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Reverse Crafter — Path of Exile 1</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<header class="top">
+  <div class="brand">
+    <h1>Reverse Crafter</h1>
+    <p>Paste an item. Get the steps and the odds to craft it.</p>
+  </div>
+  <div class="meta" id="meta">Path of Exile 1 · loading game data…</div>
+</header>
+
+<main>
+  <section class="panel input-panel">
+    <h2><span class="num">1</span> Paste the item</h2>
+    <p class="hint">In game, hover the item and press <kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>C</kbd> (most accurate) or <kbd>Ctrl</kbd>+<kbd>C</kbd>, then paste here with <kbd>Ctrl</kbd>+<kbd>V</kbd>. Text copied from the trade site or Path of Building works too.</p>
+    <textarea id="itemText" spellcheck="false" placeholder="Item Class: Rings&#10;Rarity: Rare&#10;…"></textarea>
+    <div class="row">
+      <button id="readBtn" class="primary" disabled>Read item</button>
+      <select id="sampleSel" aria-label="Load an example item">
+        <option value="">Load an example…</option>
+        <option value="ring">Rare ring (Ctrl+C)</option>
+        <option value="boots">Rare boots (Ctrl+Alt+C)</option>
+        <option value="amulet">Magic amulet</option>
+      </select>
+    </div>
+    <div id="parseMsg" class="msg" hidden></div>
+  </section>
+
+  <section class="panel" id="itemPanel" hidden>
+    <h2><span class="num">2</span> Choose what you need</h2>
+    <div id="itemHead" class="item-head"></div>
+    <p class="hint">Untick mods you don't care about, and lower the tier where a weaker roll is fine. Every relaxed tier makes the craft cheaper.</p>
+    <div id="modList" class="mod-list"></div>
+    <div id="unknownMsg" class="msg warn" hidden></div>
+    <div class="row">
+      <label class="ilvl">Item level of your base <input id="ilvlInput" type="number" min="1" max="100"></label>
+      <button id="planBtn" class="primary">Find crafting plans</button>
+    </div>
+  </section>
+
+  <section class="panel" id="resultPanel" hidden>
+    <h2><span class="num">3</span> How to craft it</h2>
+    <div id="progress" class="progress" hidden><div class="bar"></div><span>Simulating crafts…</span></div>
+    <div id="planSummary"></div>
+    <div id="methods"></div>
+  </section>
+
+  <section class="panel notes">
+    <h3>What this version covers</h3>
+    <p>Chaos Orbs, essences (including corrupted-only ones), fossil combinations, Alteration → Regal → Exalted Orb, and one bench craft at the end. Odds come from simulating thousands of crafts with the game's real mod weights.</p>
+    <p><strong>Not yet included:</strong> Harvest reforges, Eldritch currency, metacrafting ("prefixes cannot be changed", multimod), veiled mods, Awakener's/Conqueror's orbs, recombinators, beast imprints, Aisling, and the Allflame league mechanic. Prices aren't included, so methods are ranked by chance per try, not by cost.</p>
+    <p class="fine">Fan-made tool. Not affiliated with or endorsed by Grinding Gear Games. Game data from the community RePoE project.</p>
+  </section>
+</main>
+
+<script type="module" src="js/app.js"></script>
+</body>
+</html>
