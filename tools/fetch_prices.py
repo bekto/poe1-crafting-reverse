@@ -11,6 +11,7 @@ Usage:  python3 tools/fetch_prices.py [out_file] [--league NAME] [--fixtures DIR
 import json
 import sys
 import time
+import urllib.error
 import urllib.parse
 import urllib.request
 from pathlib import Path
@@ -93,4 +94,13 @@ def main(argv):
 
 
 if __name__ == "__main__":
-    main(sys.argv[1:])
+    try:
+        main(sys.argv[1:])
+    except BaseException as e:  # show the reason as a GitHub annotation, readable without the full log
+        if isinstance(e, SystemExit) and not e.code:
+            raise
+        detail = getattr(e, "code", None) if isinstance(e, SystemExit) else f"{type(e).__name__}: {e}"
+        if isinstance(e, urllib.error.HTTPError):
+            detail += f" ({e.url})"
+        print(f"::error title=fetch_prices failed::{detail}")
+        raise
