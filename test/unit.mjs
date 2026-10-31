@@ -512,6 +512,29 @@ test("alteration route compares annulling a miss with starting over, using price
   eq(dearAnnul.annul.choice, "restart", "very expensive annulments lose");
 });
 
+// ------------------------------------------------------------------ influence
+test("influenced Exalted Orb and Awakener's Orb plans", async () => {
+  const { planCraft, modInfluence } = await import("../public/js/engine/craft.js");
+  const { ITEMS } = await import("../public/js/samples.js");
+  const helm = parse(ITEMS.awakened);
+  const byText = (re) => helm.ident.mods.find((m) => re.test(m.mod.x));
+  eq(modInfluence(db, helm.item.base, byText(/Nearby Enemies/).mod), "crusader");
+  eq(modInfluence(db, helm.item.base, byText(/Fire Damage to Spells/).mod), "hunter");
+  eq(modInfluence(db, helm.item.base, byText(/maximum Life/).mod), null);
+  const w = (list) => list.map((m) => ({ mod: m.mod, minMod: m.mod }));
+  const plan = planCraft(db, helm.item.base, helm.item.ilvl, helm.item.influences, w([byText(/Nearby/), byText(/Spells/), byText(/Fire Res/)]), [], { refineMs: 0 });
+  const aw = plan.methods.find((m) => m.kind === "awakener");
+  ok(aw, "awakener plan");
+  ok(aw.pA > 0 && aw.pB > 0 && aw.pRest > 0 && aw.pRest < 1, "the fire resistance has to come from the awakened roll");
+  ok(aw.steps.some((s) => /Awakener's Orb/.test(s.title)) && aw.steps.some((s) => /Crusader's Exalted Orb/.test(s.title)));
+  const boots = parse(ITEMS.hunterboots);
+  const bw = boots.ident.mods.filter((m) => /Chaos Gems|Fire Resistance/.test(m.mod.x));
+  const bp = planCraft(db, boots.item.base, boots.item.ilvl, boots.item.influences, w(bw), [], { refineMs: 0 });
+  const ie = bp.methods.find((m) => m.kind === "influenceExalt");
+  ok(ie && ie.p > 0 && ie.p <= ie.p2, "Hunter's Exalted Orb after rolling the rest");
+  ok(ie.steps[0].title.includes("Sorcerer Boots") && !/hunter influence/.test(ie.steps[0].title), "stage 1 starts from a base without influence");
+});
+
 // ------------------------------------------------------------------ Harvest
 test("Harvest data is loaded from data/manual and its plans are marked approximate", async () => {
   const h = db.manual.harvest;

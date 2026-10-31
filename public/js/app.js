@@ -176,7 +176,11 @@ function renderPlan(plan, ilvl) {
     const realistic = m.p > 0 && m.p >= 1e-5;
     d.className = "method" + (i === 0 && m.p > 0 ? " best" : "") + (realistic ? "" : " unlikely");
     if (i === 0) d.open = true;
-    const odds = m.kind === "lock" && m.p > 0
+    const odds = m.kind === "awakener" && m.p > 0
+      ? `<b>~${oneIn(m.p)} orbs</b><small>${pct(m.pA)} and ${pct(m.pB)} per influenced exalt · ${pct(m.pRest)} per awakening${m.exact ? " · exact" : ""}</small>`
+      : m.kind === "influenceExalt" && m.p > 0
+      ? `<b>1 in ${oneIn(m.p)}</b><small>stage 1: ${pct(m.p1)} per try · ${pct(m.p2)} per influenced exalt${m.exact ? " · exact" : ""}</small>`
+      : m.kind === "lock" && m.p > 0
       ? `<b>~${oneIn(m.p)} tries</b><small>stage 1: ${pct(m.p1)} per try · stage 2: ${pct(m.p2)} per try${m.approximate ? " · approximate" : m.exact ? " · exact" : ""}</small>`
       : m.kind === "altregal" && m.p > 0
       ? `<b>~${oneIn(m.p)} alterations</b><small>${pct(m.p1)} per alteration to start · ${pct(m.p2)} that regal + exalts finish it${m.exact ? " · exact" : ""}</small>`
@@ -188,6 +192,7 @@ function renderPlan(plan, ilvl) {
     const kind = {
       chaos: "Chaos spam", essence: "Essence", fossil: "Fossils", harvest: "Harvest reforge",
       altregal: m.block ? "Alteration route with a metacraft" : "Alteration route · cheap currency, many tries",
+      influenceExalt: "Influenced Exalted Orb", awakener: "Awakener's Orb · two influences",
       lock: m.harvestKeep ? "Two stages · Harvest rerolls one side" : "Metacraft · two stages, each stage-2 try needs a new lock craft",
     }[m.kind] + (m.multimod ? " · multimod" : "") + (m.approximate ? " · Harvest data is hand-written" : "");
     d.innerHTML = `

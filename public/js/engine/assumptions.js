@@ -16,3 +16,6 @@ export function rareModCounts(base) {
 // on the other side only. Assumed: the mod count is rolled as usual (RARE_COUNTS) and the kept mods count
 // towards it, with at least this many new mods.
 export const LOCKED_REROLL_MIN_NEW = 1;
+
+// Awakener's Orb: the result keeps one influenced mod from each item and rolls the rest like a Chaos Orb, with the
+// mod count rolled as usual (RARE_COUNTS) and the two kept mods counting towards it.

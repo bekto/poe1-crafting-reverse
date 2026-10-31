@@ -21,7 +21,8 @@ Work top to bottom. Each item is done when its acceptance check passes, the test
   - Notes: 12 tag reforges (exact via a mixture over the guaranteed first mod, brute-force checked) and keep-prefixes/suffixes as a stage-2 option; `loadDb` loads `data/manual/*.json`. The wiki wasn't reachable, so costs are null and the multiplier is an assumption (DECISIONS).
 - [x] **Annulment-aware alteration route.** When an exalt misses, compare annulling with starting over, and report the cheaper choice.
   - Notes: `engine/annul.js` simulates "annul a miss up to K times (K = 1..3), then start over" from the exact stage-1 distribution; starting over stays exact. With `opts.prices` the planner picks the cheaper option (prices arrive in Phase 3). The K = 0 case matches the exact route.
-- [ ] **Awakener's Orb and Conqueror's Exalts.** Plan for items with two influences, or mods that need an influence.
+- [x] **Awakener's Orb and Conqueror's Exalts.** Plan for items with two influences, or mods that need an influence.
+  - Notes: influenced Exalted Orb as stage 2 after rolling the rest on an uninfluenced base; Awakener plan (one influenced exalt per base, then awaken; rest from the awakened roll, exact when small). New two-influence sample. Influence of a mod is read from its spawn tags.
 - [ ] **Eldritch currency.** Eldritch implicits (Exarch/Eater), Eldritch Chaos, Exalted and Annulment orbs (prefix/suffix by dominance), and Orbs of Conflict. Requires parsing eldritch implicits.
 - [ ] **Veiled mods.** Aisling slams and Veiled Chaos Orbs, using the `unveiled` mod domain.
 - [ ] **Recombinators.** Mark this as advanced and approximate if the mechanics aren't fully known.

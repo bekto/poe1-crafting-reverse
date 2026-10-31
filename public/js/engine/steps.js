@@ -75,10 +75,11 @@ export function buildSteps(ctx, m) {
   const steps = [];
   const infl = ctx.influences.length ? ` with ${ctx.influences.join(" + ")} influence` : "";
   const minIlvl = Math.max(ctx.base.lvl || 1, ...ctx.targets.map((t) => t.minIlvl || 1));
+  if (m.kind === "awakener") return awakenerSteps(ctx, m);
   const fixedTxt = ctx.fixedEntries.length ? ` that already has the fractured mod${ctx.fixedEntries.length > 1 ? "s" : ""} ${ctx.fixedEntries.map((e) => `"${one(e.mod.x)}"`).join(", ")}` : "";
   steps.push({
     title: `Get a ${ctx.base.name}${infl}`,
-    detail: `Item level ${ctx.ilvl} (the plan was worked out at this level; at least ${minIlvl} is needed for the tiers you asked for)${fixedTxt}.`,
+    detail: `Item level ${ctx.ilvl} (the plan was worked out at this level; at least ${minIlvl} is needed for the tiers you asked for)${fixedTxt}.${ctx.influences.length > 1 ? " A base with two influences comes from an Awakener's Orb (see that plan)." : ""}`,
   });
   if (["chaos", "essence", "fossil"].includes(m.kind)) steps.push(...rerollSteps(ctx, m));
   else if (m.kind === "altregal") {
@@ -111,6 +112,19 @@ export function buildSteps(ctx, m) {
       });
     }
   }
+  else if (m.kind === "influenceExalt") {
+    const t = `"${one(m.target.mod.x)}"${m.target.mod !== m.target.wantedMod ? " or better" : ""}`;
+    if (m.stage1) {
+      const s1 = rerollSteps(ctx, m.stage1, `${pct(m.p1)} per try (about ${fmtN(1 / m.p1)} tries).`);
+      s1[0].title = `Stage 1 — ${s1[0].title}`;
+      s1[0].detail += ` Use a base without influence, and keep a ${sideName(m.target.side)} free.`;
+      steps.push(...s1);
+    }
+    steps.push({
+      title: `${m.stage1 ? "Stage 2 — " : ""}${m.orb}`,
+      detail: `Adds ${m.influence} influence and one random ${m.influence} mod; ${pct(m.p2)} that it's ${t}. On a miss, start again from stage 1. Overall about ${fmtN(1 / m.p)} stage-1 tries and ${fmtN(1 / m.p2)} ${m.orb}s. Assumes the item has room on both sides, so the odds are on the safe side.`,
+    });
+  }
   const crafts = ctx.crafts;
   if (crafts.length > 1 && ctx.db.meta?.multimod) {
     const mm = ctx.db.meta.multimod;
@@ -120,6 +134,23 @@ export function buildSteps(ctx, m) {
     const o = c.option;
     steps.push({ title: `Bench craft "${one(o.mod.x)}"${crafts.length > 1 ? " (unless it rolled)" : ""}`, detail: `Crafting bench, costs ${fmtCost(o.cost) || "a little currency"}. Needs a free ${sideName(o.mod.g)}, which the odds above already require.` });
   }
+  return steps;
+}
+
+function awakenerSteps(ctx, m) {
+  const [A, B] = m.targets;
+  const [X, Y] = m.influences;
+  const t = (x) => `"${one(x.mod.x)}"${x.mod !== x.wantedMod ? " or better" : ""}`;
+  const steps = [
+    { title: `Get two ${ctx.base.name} bases, item level ${ctx.ilvl}, without influence`, detail: "Rare, with free slots. Each gets one influenced mod in the next steps." },
+    { title: `${m.orbs[0]} on the first`, detail: `Adds ${X} influence and one ${X} mod; ${pct(m.pA)} that it's ${t(A)} (about ${fmtN(1 / m.pA)} orbs, on new bases after a miss).` },
+    { title: `${m.orbs[1]} on the second`, detail: `Adds ${Y} influence and one ${Y} mod; ${pct(m.pB)} that it's ${t(B)} (about ${fmtN(1 / m.pB)} orbs).` },
+    {
+      title: "Awakener's Orb: sacrifice one onto the other",
+      detail: `The result has both influences, keeps one influenced mod from each item (the only ones they have), and rolls new mods for the rest. ${m.pRest > 0 ? `${pct(m.pRest)} that it also has ${targetList(ctx)}, so about ${fmtN(m.attempts)} awakenings.` : "The rest of the wanted mods can't come from this roll."} You can also finish the rest with exalts or the bench instead of awakening again.`,
+    },
+  ];
+  for (const c of ctx.crafts) steps.push({ title: `Bench craft "${one(c.option.mod.x)}"`, detail: `Costs ${fmtCost(c.option.cost)}. Needs a free ${sideName(c.option.mod.g)}.` });
   return steps;
 }
 

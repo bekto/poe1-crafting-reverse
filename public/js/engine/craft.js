@@ -424,6 +424,96 @@ function lockMethods(ctx, trials, wanted) {
   return out;
 }
 
+// ---------------------------------------------------------------- influence: influenced Exalted Orbs and Awakener's Orb
+
+const cap1 = (s) => s[0].toUpperCase() + s.slice(1);
+export const influenceExaltName = (inf) => `${cap1(inf)}'s Exalted Orb`;
+
+/** The influence a mod needs on this base (null for normal mods). */
+export function modInfluence(db, base, mod) {
+  const infl = db.classes[base.cls]?.influence || {};
+  for (const [name, tag] of Object.entries(infl)) if (mod.sw.some(([t, w]) => t === tag && w > 0)) return name;
+  return null;
+}
+
+/** Weighted mods an influenced Exalted Orb can add: the influence's own mods only. */
+function influencePool(ctx, inf) {
+  const normal = new Set(basePool(ctx.db, ctx.base, [], ctx.ilvl).map((e) => e.mod.id));
+  return basePool(ctx.db, ctx.base, [inf], ctx.ilvl).filter((e) => !normal.has(e.mod.id));
+}
+
+/** Chance that one influenced Exalted Orb adds a mod meeting target t (assumes both sides have room). */
+function influenceExaltChance(ctx, inf, t) {
+  const pool = influencePool(ctx, inf);
+  const tot = pool.reduce((a, e) => a + e.w, 0);
+  const hit = pool.filter((e) => satisfies(e.mod, t)).reduce((a, e) => a + e.w, 0);
+  return tot > 0 ? hit / tot : 0;
+}
+
+/**
+ * One influence on the item and one wanted influenced mod: roll everything else on a base without influence
+ * (leaving a slot on that mod's side), then slam the influenced Exalted Orb. A miss means starting over.
+ */
+function influenceExaltMethods(ctx, trials, wanted) {
+  if (ctx.influences.length !== 1 || ctx.fixedEntries.length) return [];
+  const inf = ctx.influences[0];
+  const infTargets = ctx.hard.filter((t) => modInfluence(ctx.db, ctx.base, t.mod) === inf);
+  if (infTargets.length !== 1) return [];
+  const T = infTargets[0];
+  const p2 = influenceExaltChance(ctx, inf, T);
+  if (!(p2 > 0)) return [];
+  const rest = wanted.filter((w) => w.mod !== T.wantedMod);
+  const reserve = { p: 0, s: 0 };
+  reserve[T.side]++;
+  const ctx1 = buildContext(ctx.db, ctx.base, ctx.ilvl, [], rest, [], { reserve, noExact: ctx.noExact, prices: ctx.prices, craftMods: ctx.crafts.map((c) => c.wantedMod) });
+  const stage1 = ctx1.hard.length || ctx1.crafts.length ? rerollMethods(ctx1, Math.floor(trials / 2)).filter((m) => m.p > 0).sort((a, b) => b.p - a.p)[0] : null;
+  if ((ctx1.hard.length || ctx1.crafts.length) && !stage1) return [];
+  if (stage1) delete stage1.rerun;
+  const p1 = stage1 ? stage1.p : 1;
+  const orb = influenceExaltName(inf);
+  return [{
+    kind: "influenceExalt",
+    name: `${stage1 ? stage1.name + ", then " : ""}${orb}`,
+    influence: inf, orb, target: T, stage1, stage1Ctx: ctx1, ctx: ctx1,
+    p1, p2, p: p1 * p2,
+    exact: !stage1 || !!stage1.exact, hits: stage1?.hits ?? null, trials: stage1?.trials ?? null,
+    expected: p1 * p2 > 0 ? 1 / (p1 * p2) : null, n90: null,
+    currency: [...(stage1 ? stage1.currency : []), [orb, 1]],
+  }];
+}
+
+/**
+ * Two influences and a wanted influenced mod from each: slam one influenced mod onto each of two bases with the
+ * influenced Exalted Orbs, then combine them with an Awakener's Orb, which keeps those two mods and rolls the rest.
+ */
+function awakenerMethods(ctx, trials, wanted) {
+  if (ctx.influences.length !== 2 || ctx.fixedEntries.length) return [];
+  const [X, Y] = ctx.influences;
+  const tx = ctx.hard.filter((t) => modInfluence(ctx.db, ctx.base, t.mod) === X);
+  const ty = ctx.hard.filter((t) => modInfluence(ctx.db, ctx.base, t.mod) === Y);
+  if (tx.length !== 1 || ty.length !== 1) return [];
+  const pA = influenceExaltChance(ctx, X, tx[0]), pB = influenceExaltChance(ctx, Y, ty[0]);
+  if (!(pA > 0 && pB > 0)) return [];
+  // the awakened item keeps the two influenced mods; the rest of the wanted mods have to come from its new roll
+  const keep = [tx[0], ty[0]].map((t) => influencePool(ctx, modInfluence(ctx.db, ctx.base, t.mod)).find((e) => satisfies(e.mod, t)).mod);
+  const restWanted = wanted.filter((w) => w.mod !== tx[0].wantedMod && w.mod !== ty[0].wantedMod);
+  const ctx2 = buildContext(ctx.db, ctx.base, ctx.ilvl, ctx.influences, restWanted, keep, { noExact: ctx.noExact, prices: ctx.prices, craftMods: ctx.crafts.map((c) => c.wantedMod) });
+  const r = rerollOdds(ctx2, ctx2.pool, [], trials, 888);
+  delete r.rerun;
+  const pRest = r.p;
+  const attempts = pRest > 0 ? 1 / pRest : null;
+  const actions = attempts ? attempts * (1 / pA + 1 / pB + 1) : null;
+  const ox = influenceExaltName(X), oy = influenceExaltName(Y);
+  return [{
+    kind: "awakener",
+    name: `${ox} + ${oy}, then Awakener's Orb`,
+    influences: [X, Y], orbs: [ox, oy], targets: [tx[0], ty[0]], pA, pB, pRest, attempts, ctx: ctx2,
+    p: actions ? 1 / actions : 0, expected: actions, n90: null,
+    exact: !!r.exact, hits: r.hits ?? null, trials: r.trials ?? null, upperBound: actions ? null : r.upperBound,
+    currency: [[ox, 1], [oy, 1], ["Awakener's Orb", 1]],
+  }];
+}
+
 function pickCrafts(wanted, crafts) {
   return wanted.filter((w) => crafts.some((t) => t.wantedMod === w.mod));
 }
@@ -449,7 +539,8 @@ export function planCraft(db, base, ilvl, influences, wanted, fixed = [], opts =
     if (m && ar && m.p > ar.p) methods.push(m);
   }
   methods.push(...lockMethods(ctx, trials, wanted));
-  for (const m of methods) m.ctx = ctx;
+  methods.push(...influenceExaltMethods(ctx, trials, wanted), ...awakenerMethods(ctx, trials, wanted));
+  for (const m of methods) m.ctx = m.ctx || ctx;
 
   // with two or more bench-able mods: the same methods with multimod and two bench crafts
   if (ctx.extraBenchable.length && db.meta?.multimod) {
@@ -471,7 +562,7 @@ export function planCraft(db, base, ilvl, influences, wanted, fixed = [], opts =
   for (const m of methods) {
     m.steps = buildSteps(m.ctx, m);
     m.crafts = m.ctx.crafts.map((c) => ({ mod: c.wantedMod, option: c.option }));
-    delete m.ctx; delete m.stage1Ctx; delete m.stage2Ctx;
+    delete m.ctx; delete m.stage1Ctx; delete m.stage2Ctx; delete m.target; delete m.targets;
   }
   const minIlvl = Math.max(base.lvl || 1, ...ctx.targets.map((t) => t.minIlvl || 1));
   const impossible = ctx.hard.filter((t) => t.naturalWeight === 0);

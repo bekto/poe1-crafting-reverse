@@ -14,6 +14,7 @@ export const LABELS = {
   fractured: "Fractured helmet",
   synthamulet: "Synthesised amulet",
   summedplate: "Body armour, Ctrl+C with a summed life line",
+  awakened: "Helmet with two influences (Crusader + Hunter)",
 };
 
 export const ITEMS = {
@@ -301,4 +302,24 @@ Item Level: 86
 +44% to Fire Resistance
 +47% to Cold Resistance
 +33% to Chaos Resistance`,
+awakened: `Item Class: Helmets
+Rarity: Rare
+Doom Crown
+Royal Burgonet
+--------
+Armour: 520
+--------
+Requirements:
+Level: 65
+Str: 148
+--------
+Item Level: 86
+--------
++90 to maximum Life
+Adds 30 to 55 Fire Damage to Spells
++42% to Fire Resistance
+Nearby Enemies have -9% to Lightning Resistance
+--------
+Crusader Item
+Hunter Item`,
 };
