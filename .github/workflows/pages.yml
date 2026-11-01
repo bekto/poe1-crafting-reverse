@@ -1,13 +1,12 @@
 name: Deploy to GitHub Pages
 
-# Tests, then publishes public/ as a static site. Also runs after the hourly price update so the new
-# prices.json goes live.
+# Tests, fetches current prices from poe.ninja into the site (not into the repository), and publishes public/.
+# Runs on every push to main and once an hour, which is as often as poe.ninja may be polled.
 on:
   push:
     branches: [main]
-  workflow_run:
-    workflows: ["Update prices"]
-    types: [completed]
+  schedule:
+    - cron: "17 * * * *"
   workflow_dispatch:
 
 permissions:
@@ -17,21 +16,17 @@ permissions:
 
 concurrency:
   group: pages
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   test:
-    # after a price update, only when it succeeded
-    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: main
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v7
         with:
           node-version: "22"
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
       - run: node test/run.mjs
@@ -39,19 +34,45 @@ jobs:
       - run: node test/reference.mjs
       - run: node test/perf.mjs
 
+  browser:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+      - name: Install Playwright and Chromium
+        run: |
+          npm install -g playwright
+          npx playwright install --with-deps chromium
+      - name: Browser checks
+        run: |
+          (cd public && python3 -m http.server 8765 &)
+          sleep 2
+          export NODE_PATH=$(npm root -g)
+          node test/browser.cjs boots
+          node test/browser.cjs builder
+          node test/browser.cjs '#b=Metadata/Items/Rings/Ring12&i=85&w=IncreasedLife5~IncreasedLife3,ColdResist7'
+          node test/a11y.cjs
+
   deploy:
-    needs: test
+    needs: [test, browser]
     runs-on: ubuntu-latest
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v7
         with:
-          ref: main
-      - uses: actions/configure-pages@v5
-      - uses: actions/upload-pages-artifact@v3
+          python-version: "3.12"
+      - name: Fetch current prices
+        # keeps the committed prices.json if poe.ninja is down or has changed again
+        continue-on-error: true
+        run: python3 tools/fetch_prices.py public/data/prices.json
+      - uses: actions/configure-pages@v6
+      - uses: actions/upload-pages-artifact@v5
         with:
           path: public
       - id: deployment
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v5

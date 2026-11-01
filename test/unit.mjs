@@ -244,6 +244,40 @@ test("parser errors: empty, not an item, unique, unknown base", () => {
   ok(parseItemText(db, "Item Class: Rings\nRarity: Rare\nX\nPotato Ring\n--------\nItem Level: 80").errors.some((e) => /base type/.test(e)));
 });
 
+test("Path of Building export: base, implicit, crafted and influence lines", () => {
+  const { item, ident, ids } = parse(`Rarity: RARE
+Storm Loop
+Two-Stone Ring
+Unique ID: 1234abcd
+Item Level: 85
+LevelReq: 64
+Implicits: 1
++14% to Fire and Lightning Resistances
++74 to maximum Life
+{range:0.5}+44% to Cold Resistance
+{crafted}+25 to maximum Energy Shield
+Shaper Item`);
+  deq(item.errors, []);
+  ok(item.pob);
+  eq(item.base.name, "Two-Stone Ring");
+  eq(item.ilvl, 85);
+  deq(item.influences, ["shaper"]);
+  deq(item.implicitLines, ["+14% to Fire and Lightning Resistances"]);
+  deq(ident.unknown, []);
+  ok(ids.includes("IncreasedLife5") && ids.includes("ColdResist7"));
+  ok(ident.mods.some((m) => m.crafted && /Energy Shield/.test(m.mod.x)), "{crafted} becomes a crafted mod");
+});
+
+test("corrupted, mirrored and unidentified items get a warning; cluster jewels a clear message", () => {
+  const corrupted = parse(RING_CTRL_C + "\n--------\nCorrupted").item;
+  ok(corrupted.warnings.some((w) => /corrupted/.test(w)));
+  eq(parse(RING_CTRL_C).item.warnings.length, 0);
+  const unid = parse("Item Class: Rings\nRarity: Rare\nTwo-Stone Ring\n--------\nItem Level: 85\n--------\nUnidentified").item;
+  ok(unid.warnings.some((w) => /unidentified/.test(w)));
+  const cluster = parse("Item Class: Jewels\nRarity: Rare\nFoo\nLarge Cluster Jewel\n--------\nItem Level: 84").item;
+  ok(/Cluster Jewels have their own crafting rules/.test(cluster.errors[0]), cluster.errors[0]);
+});
+
 test("unknown lines are reported, not silently dropped", () => {
   const { ident } = parse(RING_CTRL_C + "\nThis line is not a mod");
   deq(ident.unknown, ["This line is not a mod"]);

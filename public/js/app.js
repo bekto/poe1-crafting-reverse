@@ -27,18 +27,27 @@ async function init() {
       : `League mechanic (${lg.league} ${lg.mechanic}): not modelled yet; its crafting rules haven't been checked.`;
     $("readBtn").disabled = false;
     setupBuilder();
-    await loadPrices();
-    openShared();
-    window.addEventListener("hashchange", openShared);
   } catch (e) {
     $("meta").textContent = "Couldn't load game data.";
     showMsg("parseMsg", "Couldn't load the game data file. Reload the page to try again.");
     return;
   }
+  startWorker();
+  await loadPrices();
+  // a share link plans straight away, so the worker has to exist first
+  openShared();
+  window.addEventListener("hashchange", openShared);
+}
+
+function startWorker() {
   try {
     worker = new Worker(new URL("./worker.js", import.meta.url), { type: "module" });
     worker.onmessage = (ev) => { const p = pending.get(ev.data.id); if (p) { pending.delete(ev.data.id); p(ev.data); } };
-    worker.onerror = () => { worker = null; };
+    // if the worker dies, fail what it was doing (instead of a spinner that never stops) and plan on the main thread
+    worker.onerror = (e) => {
+      worker = null;
+      for (const [id, p] of pending) { pending.delete(id); p({ ok: false, error: e.message || "the background worker stopped" }); }
+    };
   } catch { worker = null; }
 }
 
@@ -227,6 +236,8 @@ function renderItem() {
     cb.closest(".mod").classList.toggle("off", !cb.checked);
   }));
   list.querySelectorAll("select").forEach((sel) => sel.addEventListener("change", () => { rows[+sel.dataset.i].minModId = sel.value; }));
+  const notes = (item.warnings || []).map(esc);
+  if (notes.length) showMsg("parseMsg", notes.join("<br>"), "warn");
   if (unknown.length) showMsg("unknownMsg", `Couldn't identify: ${unknown.map((u) => `“${esc(u)}”`).join(", ")}. ${item.advanced ? "" : "Copying with Ctrl+Alt+C usually fixes this."} These lines are left out of the plan.`, "warn");
   else showMsg("unknownMsg", "");
   $("itemPanel").hidden = false;
@@ -259,11 +270,12 @@ async function findPlans() {
   $("planSummary").innerHTML = "";
   $("planBtn").disabled = true;
   $("resultPanel").scrollIntoView({ behavior: "smooth", block: "start" });
+  const mine = current; // the item may change while this plan runs
   try {
     const plan = await runPlan(req);
-    renderPlan(plan, ilvl);
+    if (current === mine) renderPlan(plan, ilvl);
   } catch (e) {
-    $("planSummary").innerHTML = `<div class="msg">Something went wrong while simulating: ${esc(e.message || e)}</div>`;
+    if (current === mine) $("planSummary").innerHTML = `<div class="msg">Something went wrong while working out the plans: ${esc(e.message || e)}</div>`;
   } finally {
     $("progress").hidden = true;
     $("planBtn").disabled = false;
@@ -279,9 +291,11 @@ function runPlan(req) {
     });
   }
   // fallback: run on the main thread
-  return new Promise((resolve) => setTimeout(async () => {
-    const { runPlan: run } = await import("./engine/run.js");
-    resolve(run(db, req));
+  return new Promise((resolve, reject) => setTimeout(async () => {
+    try {
+      const { runPlan: run } = await import("./engine/run.js");
+      resolve(run(db, req));
+    } catch (e) { reject(e); }
   }, 30));
 }
 

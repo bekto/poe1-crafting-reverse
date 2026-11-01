@@ -29,8 +29,43 @@ function stripMarker(line) {
   return m ? { text: m[1].trim(), marker: m[2] } : { text: line.trim(), marker: null };
 }
 
+/**
+ * Path of Building's item export has no "--------" sections: Rarity, name, base, "key: value" lines, then
+ * "Implicits: N", N implicit lines and the explicit lines, with {crafted} / {fractured} prefixes.
+ * Rewrites it into the Ctrl+C layout, or returns null when the text isn't a PoB export.
+ */
+export function pobToCtrlC(text) {
+  const lines = text.split("\n").map((l) => l.trim()).filter(Boolean);
+  if (/\n-{4,}\n/.test(text) || !/^Rarity:/i.test(lines[0] || "")) return null;
+  const imp = lines.findIndex((l) => /^Implicits:\s*\d+$/.test(l));
+  if (imp < 0) return null;
+  const nImp = parseInt(lines[imp].split(":")[1], 10);
+  const head = [lines[0].replace(/^Rarity:\s*(\w)(\w*)/i, (_, a, b) => `Rarity: ${a.toUpperCase()}${b.toLowerCase()}`)];
+  let i = 1;
+  // name and base (normal and magic items have only one name line)
+  while (i < imp && !/^[A-Za-z ]+:\s/.test(lines[i]) && head.length < 3) head.push(lines[i++]);
+  const props = lines.slice(i, imp);
+  const ilvl = props.find((l) => /^Item Level:/i.test(l));
+  const mod = (l) => {
+    let marker = "";
+    if (/\{crafted\}/.test(l)) marker = " (crafted)";
+    else if (/\{fractured\}/.test(l)) marker = " (fractured)";
+    return l.replace(/\{[^}]*\}/g, "").trim() + marker;
+  };
+  const flags = [], explicit = [];
+  for (const l of lines.slice(imp + 1 + nImp)) {
+    if (/^(Corrupted|Mirrored|Fractured Item|Synthesised Item|Split|(Shaper|Elder|Crusader|Hunter|Redeemer|Warlord|Searing Exarch|Eater of Worlds) Item)$/.test(l)) flags.push(l);
+    else explicit.push(mod(l));
+  }
+  const implicit = lines.slice(imp + 1, imp + 1 + nImp).map((l) => `${mod(l).replace(/ \((crafted|fractured)\)$/, "")} (implicit)`);
+  const out = [head.join("\n"), ilvl || "", implicit.join("\n"), explicit.join("\n"), flags.join("\n")].filter(Boolean);
+  return out.join("\n--------\n");
+}
+
 export function parseItemText(db, rawText) {
-  const text = rawText.replace(/\r/g, "").trim();
+  let text = rawText.replace(/\r/g, "").trim();
+  const pob = pobToCtrlC(text);
+  if (pob) text = pob;
   const errors = [];
   if (!text) return { errors: ["Paste an item first."] };
   const sections = text.split(/\n-{4,}\n/).map((s) => s.split("\n").map((l) => l.trim()).filter(Boolean));
@@ -63,7 +98,11 @@ export function parseItemText(db, rawText) {
     const padded = ` ${baseText} `;
     baseName = db.baseNamesSorted.find((n) => padded.includes(` ${n} `)) || null;
   }
-  if (!baseName && errors.length === 0) errors.push(`Couldn't recognise the base type "${baseText}".`);
+  if (!baseName && errors.length === 0) {
+    errors.push(/Cluster Jewel|Eye Jewel|Ghastly|Hypnotic|Murderous|Searching/.test(baseText)
+      ? `${baseText.match(/\b\w+ (Cluster|Eye) Jewel|Ghastly Eye Jewel|Hypnotic Eye Jewel|Murderous Eye Jewel|Searching Eye Jewel/)?.[0] || "This jewel"}s have their own crafting rules and aren't supported yet.`
+      : `Couldn't recognise the base type "${baseText}".`);
+  }
 
   // body sections
   let currentBlock = null;
@@ -127,6 +166,11 @@ export function parseItemText(db, rawText) {
     item.base = best;
     item.eldritch = identifyEldritch(db, item);
   }
+  if (pob) item.pob = true;
+  item.warnings = [];
+  if (item.flags.has("corrupted")) item.warnings.push("This item is corrupted, so it can't be changed any more. The plans below are for crafting a new one like it.");
+  if (item.flags.has("mirrored")) item.warnings.push("This item is mirrored, so it can't be changed. The plans below are for crafting a new one like it.");
+  if (item.flags.has("unidentified")) item.warnings.push("This item is unidentified, so its mods aren't shown. Identify it (Scroll of Wisdom) and copy it again.");
   item.errors = errors;
   return item;
 }

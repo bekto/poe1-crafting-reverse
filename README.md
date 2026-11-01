@@ -15,7 +15,7 @@ The tool only gives advice. It never sends input to the game or reads game memor
 
 ## Deploy
 
-`.github/workflows/pages.yml` runs the Node tests and publishes `public/` to GitHub Pages on every push to `main`, and again after each hourly price update. To turn it on: repository Settings → Pages → Source: "GitHub Actions". The price workflow needs "Read and write permissions" for `GITHUB_TOKEN` (Settings → Actions → General) so it can commit `prices.json`.
+`.github/workflows/pages.yml` runs the Node tests and the browser and accessibility checks (headless Chromium), then publishes `public/` with fresh prices to GitHub Pages: on every push to `main` and once an hour. The site is at https://bekto.github.io/poe1-crafting-reverse/. GitHub pauses scheduled workflows in a repository with no activity for 60 days; re-enable them from the Actions tab if that happens.
 
 ## Run it locally
 
@@ -130,7 +130,7 @@ Harvest crafts other than reforges, Eldritch Annulment (not planned), and beastc
 
 ## Prices
 
-`.github/workflows/prices.yml` runs `tools/fetch_prices.py` every hour (and on demand). It fetches currency, essence, fossil and resonator prices from poe.ninja for the current challenge league, sending a descriptive User-Agent, and commits `public/data/prices.json`. Users' browsers never call poe.ninja; the page only reads that static file. If it's missing, the page ranks by chance.
+Users' browsers never call poe.ninja; the page only reads the static `public/data/prices.json`. The deploy workflow (`.github/workflows/pages.yml`) runs every hour: it fetches current currency, essence, fossil and resonator prices for the challenge league with `tools/fetch_prices.py` (descriptive User-Agent, one request at a time) and puts them in the published site, without committing anything. `.github/workflows/prices.yml` refreshes the committed copy once a day, for local development and as a fallback when poe.ninja can't be reached. If there is no price file, the page ranks by chance.
 
 With prices, every method shows its expected cost per finished item in Chaos and Divine Orbs, and the list is ranked by that cost (a toggle switches back to ranking by chance). Items with no price (Harvest lifeforce, Aisling, anything poe.ninja doesn't list) are shown as "unpriced", and those plans rank after fully priced ones.
 

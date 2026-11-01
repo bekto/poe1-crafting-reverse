@@ -1,9 +1,10 @@
-name: Update prices
+name: Update prices in the repository
 
-# Fetches prices from poe.ninja into public/data/prices.json. Hourly at most, never from users' browsers.
+# Refreshes the committed public/data/prices.json (used for local development and as the fallback when the
+# deploy can't reach poe.ninja). The live site gets fresh prices from the hourly deploy, so this runs daily.
 on:
   schedule:
-    - cron: "17 * * * *"
+    - cron: "41 4 * * *"
   workflow_dispatch:
     inputs:
       league:
@@ -21,8 +22,8 @@ jobs:
   prices:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
       - name: Fetch prices
@@ -32,5 +33,8 @@ jobs:
           git config user.name "prices-bot"
           git config user.email "prices-bot@users.noreply.github.com"
           git add public/data/prices.json
-          git diff --cached --quiet || git commit -m "Update prices from poe.ninja"
+          git diff --cached --quiet && exit 0
+          git commit -m "Update prices from poe.ninja"
+          # main may have moved while the fetch ran
+          git pull --rebase origin main
           git push
